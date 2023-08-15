@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width">
+<title>VIZonator Configuration</title>
+<script src="viz.min.js"></script>
+<script src="cash.min.js"></script>
+<script src="ltmp_arr.js"></script>
+<script src="ltmp_en.js"></script>
+<script src="ltmp_ru.js"></script>
+
+<script src="options.js"></script>
+<style>
+body{
+	font-family:"Segoe UI", Tahoma, sans-serif;
+	margin:0;
+	width:100%;
+	background:#ddd;
+	color:#000;
+	font-size:18px;
+}
+.main{
+	width:calc(100% - 5vw);
+	max-width:800px;
+	margin:0 auto;
+	background:#fff;
+	padding:5vh 5vw;
+	box-shadow:0 1px 10px rgba(0,0,0,0.1);
+}
+body.dark{
+	background:#111;
+	color:#fff;
+}
+body.dark .main{
+	background:#223;
+	box-shadow:0 1px 10px rgba(255,255,255,0.1);
+}
+h1{
+	margin:0;
+	font-size:1.6em;
+}
+h1 img{
+	vertical-align:middle;
+}
+hr{
+	border:0;
+	height:1px;
+	background:rgba(0,0,0,0.2);
+}
+body.dark hr{
+	background:rgba(255,255,255,0.2);
+}
+.dotted{
+	border-bottom:1px dotted #333;
+	cursor:pointer;
+}
+.dashed{
+	border-bottom:1px dashed #333;
+	cursor:pointer;
+}
+body.dark .dotted{
+	border-bottom:1px dotted #ddd;
+}
+body.dark .dashed{
+	border-bottom:1px dashed #ddd;
+}
+.red{
+	color:red;
+}
+body.dark .red{
+	color:#ff1010;
+}
+.green{
+	color:#008800;
+}
+body.dark .green{
+	color:#13e213;
+}
+input[type=text],input[type=password],select{
+	padding:8px 16px;
+	border:1px solid #000;
+	border-radius:5px;
+	outline:none;
+	box-shadow:0 0 0 0 #1eade230;
+	transition:all 0.3s linear;
+}
+input[type=checkbox]{
+	width: 16px;
+	height: 16px;
+	vertical-align: text-bottom;
+}
+input[type=text]:focus,input[type=password]:focus{
+	border:1px solid #005ce1;
+	box-shadow:0 0 0 3px #1eade230;
+}
+input[type=button]{
+	font-size:16px;
+	padding:10px 15px;
+	margin:5px 0;
+	outline:none;
+	border-radius:10px;
+	background:#1eade2;
+	background:linear-gradient(0deg, #1eade2 0%, #1b75bb 100%);
+	border:1px solid #005ce1;
+	box-shadow:0 2px 2px #005ce160;
+	color:#fff;
+	text-shadow:1px 1px #00000050;
+	cursor:pointer;
+	transition:all 0.3s linear;
+}
+.remove-encode{
+	opacity:0.5;
+}
+.remove-encode:hover{
+	opacity:1;
+}
+input[type=button]:hover{
+	border:1px solid #0045aa;
+	box-shadow:0 3px 8px #005ce170;
+	text-shadow:1px 1px #00000080;
+}
+.settings_status{
+	color:#999;
+}
+.rules{
+	border:1px solid rgba(0,0,0,0.2);
+	background:#eee;
+	margin:10px 0;
+}
+body.dark .rules{
+	border:1px solid rgba(255,255,255,0.2);
+	background:#112;
+}
+.rules .origin-name{
+	cursor:pointer;
+	padding:8px 15px;
+	padding-bottom:12px;
+	font-size:18px;
+	font-weight:bold;
+}
+.rules .origin-name span{
+	border-bottom:1px dotted #999;
+}
+.rules .operations{
+	padding:5px 10px;
+	background:#fff;
+	line-height:30px;
+}
+body.dark .rules .operations{
+	background:#113;
+}
+.rules .operations .operation-name{
+	display:inline-block;
+	min-width:120px;
+}
+.rules .operations .delete-rule{
+	color:red;
+	font-size:14px;
+	border-bottom:1px dotted red;
+	cursor:pointer;
+}
+.rules.closed{
+	margin:0;
+}
+.rules.closed .operations{
+	display:none;
+}
+</style>
+</head>
+<body>
+<div class="main">
+	<h1 class="caption">VIZonator settings</h1>
+	<hr>
+	<div class="info">
+		Loading&hellip;
+	</div>
+	<div class="control">
+		Loading&hellip;
+	</div>
+	<div class="settings">
+		Loading&hellip;
+	</div>
+	<div class="lock">
+		Loading&hellip;
+	</div>
+	<div class="rules-list">
+		Loading&hellip;
+	</div>
+</div>
+</body>
+</html>

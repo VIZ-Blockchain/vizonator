@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width">
+<title>VIZonator</title>
+<script src="cash.min.js"></script>
+<script src="ltmp_arr.js"></script>
+<script src="ltmp_en.js"></script>
+<script src="ltmp_ru.js"></script>
+
+<script src="operation.js"></script>
+<style>
+body{
+	font-family:"Segoe UI", Tahoma, sans-serif;
+	width:330px;
+	margin:0 auto;
+	padding:35px;
+	padding-bottom:28px;
+	box-shadow:inset 0px 0px 0px 15px rgba(0,161,247,0.15);
+	text-align:center;
+	font-size:18px;
+	overflow:hidden;
+	box-sizing:border-box;
+	background:#fff;
+	color:#000;
+}
+body.dark{
+	box-shadow:inset 0px 0px 0px 15px rgba(0,90,255,0.25);
+	background:#223;
+	color:#fff;
+}
+.logo{
+	overflow:hidden;
+	display:inline-block;
+	height:120px;
+	width:150px;
+}
+.logo.easter-egg{
+	overflow:visible;
+	height:auto;
+	width:auto;
+	margin: 10px 0;
+}
+.logo img{
+	width:100%;
+}
+.logo.easter-egg img{
+	width:auto;
+	height:225px;
+	max-height:225px;
+}
+.action{
+	text-align:left;
+	font-size:16px;
+}
+.caption{
+	text-align:center;
+	color:#0056df;
+	font-size:22px;
+	overflow:hidden;
+	text-overflow:ellipsis;
+	margin:10px 0;
+}
+body.dark .caption{
+	color:#1d74ff;
+}
+hr{
+	border:0;
+	height:1px;
+	background:rgba(0,0,0,0.1);
+}
+body.dark hr{
+	background:rgba(255,255,255,0.1);
+}
+p{
+	margin:8px 0;
+}
+.gray{color:#999;}
+.orange{color:#f60;}
+body.dark .orange{
+	color:#f71;
+}
+.blue{color:#0045b3;}
+body.dark .blue{
+	color:#0097f4;
+}
+.red{color:#ff2020;}
+.monospace{
+	word-wrap:break-word;
+	white-space:pre-wrap;
+	font-family:monospace;
+}
+.limit-height{
+	display:block;
+	max-height:100px;
+	overflow-y:auto;
+}
+.limit-height::-webkit-scrollbar {
+	width:4px;
+	height:4px;
+}
+.limit-height::-webkit-scrollbar-track {
+	background:rgba(0,0,0,0.2);
+	border-radius:2px;
+}
+.limit-height::-webkit-scrollbar-thumb {
+	background:rgba(0,0,0,0.5);
+	border-radius:2px;
+}
+.energy_active{
+	display:inline-block;
+	width:1%;
+	height:20px;
+	margin:0;
+	padding:0;
+	cursor:pointer;
+	background:linear-gradient(0deg, rgba(0,86,223,1) 0%, rgba(0,161,247,1) 100%);
+	opacity:0.5;
+	-webkit-transition: all 0.2s linear;
+	-moz-transition: all 0.2s linear;
+	-o-transition: all 0.2s linear;
+	transition: all 0.2s linear;
+}
+body.dark .energy_active{
+	opacity:0.7;
+}
+.energy_active.selected{
+	opacity:1.0;
+}
+body.dark .energy_active.selected{
+	opacity:1.0;
+}
+.energy_inactive{
+	display:inline-block;
+	width:1%;
+	height:20px;
+	margin:0;
+	padding:0;
+	cursor:pointer;
+	background:rgba(200,200,200,0.5);
+}
+body.dark .energy_inactive{
+	background:rgba(25,25,25,0.5);
+}
+input[type=checkbox]{
+	vertical-align:middle;
+	width:16px;
+	height:16px;
+	margin-top:2px;
+}
+.trust{
+	font-size:14px;
+	margin-right:10px;
+}
+.unselectable{
+	user-drag: none;
+	-webkit-user-drag: none;
+	user-select:none;
+	-moz-user-select:none;
+	-khtml-user-select:none;
+	-webkit-user-select:none;
+	-o-user-select:none;
+}
+.right{
+	float:right;
+}
+.text-right{
+	text-align:right;
+}
+.button{
+	width:calc(50% - 30px);
+	display:inline-block;
+	padding:6px 13px;
+	margin:8px 4px;
+	margin-left:0;
+	background:#fff;
+	color:#000;
+	outline:none;
+	border:none;
+	font-size:16px;
+	border-radius:8px;
+	text-align:center;
+	text-decoration:none;
+	cursor:pointer !important;
+	box-shadow: 0 2px 4px -1px rgba(0,0,0,0.07), 0 4px 5px 0 rgba(0,0,0,0.07), 0 1px 10px 0 rgba(0,0,0,0.1);
+	-webkit-transition: all 0.1s linear;
+	-moz-transition: all 0.1s linear;
+	-o-transition: all 0.1s linear;
+	transition: all 0.1s linear;
+}
+.approve-action{
+	margin-right:0;
+	margin-left:4px;
+}
+body.dark .button{
+	background:#000;
+	color:#fff;
+	box-shadow: 0 2px 4px -1px rgba(255,255,255,0.07), 0 4px 5px 0 rgba(255,255,255,0.07), 0 1px 10px 0 rgba(255,255,255,0.1);
+}
+.button:active,body.dark .button:active{
+	outline:none;
+	border:none;
+}
+.button.negative,body.dark .button.negative{
+	-webkit-transition: all 0.2s linear;
+	-moz-transition: all 0.2s linear;
+	-o-transition: all 0.2s linear;
+	transition: all 0.2s linear;
+	opacity:0.6;
+}
+.button:hover{
+	color:#000;
+	box-shadow: 0 2px 4px -1px rgba(0, 21, 97, 0.07), 0 4px 5px 0 rgba(7, 0, 121, 0.07), 0 2px 10px 1px rgba(0, 78, 255, 0.25);
+}
+body.dark .button:hover{
+	color:#fff;
+	box-shadow: 0 2px 4px -1px rgba(0, 31, 145, 0.07), 0 4px 5px 0 rgba(9, 0, 180, 0.07), 0 2px 10px 1px rgba(0, 78, 255, 0.25);
+}
+.button.negative:hover{
+	opacity:1.0;
+	box-shadow: 0 2px 4px -1px rgba(97, 21, 0, 0.07), 0 4px 5px 0 rgba(121, 7, 0, 0.07), 0 2px 10px 1px rgba(255, 39, 0, 0.35);
+}
+body.dark .button.negative:hover{
+	opacity:1.0;
+	box-shadow: 0 2px 4px -1px rgba(141, 31, 0, 0.07), 0 4px 5px 0 rgba(177, 9, 0, 0.07), 0 2px 10px 1px rgba(255, 0, 0, 0.35);
+}
+.disabled{
+	opacity:0.5 !important;
+}
+.button .icon{
+	min-width:16px;
+	display:inline-block;
+	text-align:center;
+	pointer-events:none;
+}
+body.dark .button img{
+	filter:invert(1);
+}
+.options{
+	color:#bb0000;
+	font-size:16px;
+}
+body.dark .options{
+	color:#e20000;
+}
+.current-account{
+	color:#008800;
+	font-size:16px;
+}
+body.dark .current-account{
+	color:#13e213;
+}
+.select_energy{
+	text-align:center;
+	overflow:hidden;
+	border-radius:4px;
+	height:20px;
+}
+
+.header-icon{
+	opacity:0.3;
+	color:#000;
+	-webkit-transition: all 0.2s linear;
+	-moz-transition: all 0.2s linear;
+	-o-transition: all 0.2s linear;
+	transition: all 0.2s linear;
+	margin-left:10px;
+}
+body.dark .header-icon{
+	color:#fff;
+}
+.header-icon:hover,body.dark .header-icon:hover{
+	opacity:1;
+}
+input[type=text],input[type=password],select{
+	padding:8px 16px;
+	border:1px solid #000;
+	border-radius:5px;
+	outline:none;
+	box-shadow:0 0 0 0 #1eade230;
+	transition:all 0.3s linear;
+}
+input[type=text]:focus,input[type=password]:focus{
+	border:1px solid #005ce1;
+	box-shadow:0 0 0 3px #1eade230;
+}
+.decode_password{
+	text-align:center;
+	font-size:16px;
+	margin-left:0;
+	width:160px;
+}
+.decode_password.error{
+	border:1px solid #ff1010 !important;
+}
+.big-icon{
+	display:inline-block;
+	vertical-align:middle;
+	text-align:center;
+}
+.big-icon a{
+	cursor:pointer;
+}
+.big-icon .header-icon{
+	opacity:0.6;
+}
+.big-icon .header-icon:hover{
+	opacity:1;
+}
+.big-icon svg{
+	background:rgba(0, 162, 255, 0.315);
+	border-radius:30px;
+	padding:8px;
+}
+</style>
+</head>
+<body>
+<div class="logo"><img src="images/icon.svg" alt="Vizonator logo"></div>
+<div class="action">
+	<p>Loading&hellip;</p>
+</div>
+<div class="info">
+	<p>Loading&hellip;</p>
+</div>
+</body>
+</html>
