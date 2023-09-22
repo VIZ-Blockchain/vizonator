@@ -139,6 +139,48 @@ document.addEventListener('vizonator',function(event){
 		}
 	}
 	else
+	if('import_account'==data_obj.action){
+		if(typeof data.account == 'undefined'){
+			error='empty account';
+			document.dispatchEvent(new CustomEvent('vizonator_'+data_obj.event,{detail:JSON.stringify({'error':error,'result':result})}));
+		}
+		else{
+			let need_key=false;
+			if(typeof data.regular_key == 'undefined'){
+				data.regular_key=false;
+			}
+			if(typeof data.active_key == 'undefined'){
+				data.active_key=false;
+			}
+			if(typeof data.memo_key == 'undefined'){
+				data.memo_key=false;
+			}
+			if(false==data.regular_key && false==data.active_key){
+				need_key=true;
+			}
+
+			if(need_key){
+				error='need key';
+				document.dispatchEvent(new CustomEvent('vizonator_'+data_obj.event,{detail:JSON.stringify({'error':error,'result':result})}));
+			}
+			else{
+				ext_browser.runtime.sendMessage({
+					inpage:true,
+					operation:'import_account',
+					operation_type:['account'],
+					event:data_obj.event,
+
+					account:data.account,
+					regular_key:data.regular_key,
+					active_key:data.active_key,
+					memo_key:data.memo_key,
+
+					action_top,action_left,action_width,action_height
+				});
+			}
+		}
+	}
+	else
 	if('transfer'==data_obj.action){
 		if(typeof data.to == 'undefined'){
 			error='empty to';
@@ -353,6 +395,58 @@ document.addEventListener('vizonator',function(event){
 		});
 	}
 	else
+	if('get_accounts_on_sale'==data_obj.action){
+		if(typeof data.from == 'undefined'){
+			data.from=0;
+		}
+		if(false===data.from){
+			data.from=0;
+		}
+		if(typeof data.limit == 'undefined'){
+			data.limit=100;
+		}
+		if(false===data.limit){
+			data.limit=100;
+		}
+		ext_browser.runtime.sendMessage({
+			inpage:true,
+			operation:'get_accounts_on_sale',
+			operation_type:['account','api'],
+			event:data_obj.event,
+
+			from:data.from,
+			limit:data.limit,
+
+			action_top,action_left,action_width,action_height
+		});
+	}
+	else
+	if('get_subaccounts_on_sale'==data_obj.action){
+		if(typeof data.from == 'undefined'){
+			data.from=0;
+		}
+		if(false===data.from){
+			data.from=0;
+		}
+		if(typeof data.limit == 'undefined'){
+			data.limit=100;
+		}
+		if(false===data.limit){
+			data.limit=100;
+		}
+		ext_browser.runtime.sendMessage({
+			inpage:true,
+			operation:'get_subaccounts_on_sale',
+			operation_type:['account','api'],
+			event:data_obj.event,
+
+			from:data.from,
+			limit:data.limit,
+
+			action_top,action_left,action_width,action_height
+		});
+	}
+	else
 	if('account_metadata'==data_obj.action){
 		if(typeof data.json == 'undefined'){
 			error='empty json';
@@ -424,6 +518,11 @@ if(typeof window.vizonator == 'undefined'){
 			this.event_numerator++;
 			bind_event_callback('get_settings',event_num,false,callback);
 		},
+		'import_account':function(account,regular_key,active_key,memo_key,callback){
+			let event_num=this.event_numerator;
+			this.event_numerator++;
+			bind_event_callback('import_account',event_num,{account,regular_key,active_key,memo_key},callback);
+		},
 		'award':function(data,callback){
 			let event_num=this.event_numerator;
 			this.event_numerator++;
@@ -474,6 +573,16 @@ if(typeof window.vizonator == 'undefined'){
 			this.event_numerator++;
 			bind_event_callback('get_account_history',event_num,{account,from,limit},callback);
 		},
+		'get_accounts_on_sale':function(from,limit,callback){
+			let event_num=this.event_numerator;
+			this.event_numerator++;
+			bind_event_callback('get_accounts_on_sale',event_num,{from,limit},callback);
+		},
+		'get_subaccounts_on_sale':function(from,limit,callback){
+			let event_num=this.event_numerator;
+			this.event_numerator++;
+			bind_event_callback('get_subaccounts_on_sale',event_num,{from,limit},callback);
+		},
 		'account_metadata':function(data,callback){
 			let event_num=this.event_numerator;
 			this.event_numerator++;
@@ -485,6 +594,9 @@ if(typeof window.vizonator == 'undefined'){
 			bind_event_callback('passwordless_auth',event_num,data,callback);
 		},
 	};
+	if(typeof window.vizonator_on_load == 'function'){
+		window.vizonator_on_load();
+	}
 }`;
 
 //try to inject inpage script

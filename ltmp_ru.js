@@ -163,6 +163,9 @@ var ltmp_ru_arr={
 	protocol_caption:'Протокол',
 	json_caption:'JSON',
 	vote_percent_caption:'Процент голосования',
+
+	from_caption:'От',
+	limit_caption:'Количество',
 	operations_caption:{
 		transfer:'Перевод',
 		transfer_to_vesting:'Стэйкинг',
@@ -175,8 +178,11 @@ var ltmp_ru_arr={
 		get_custom_current_account:'Информация о текущем аккаунте',
 		get_account:'Получить текущий аккаунт',
 		get_settings:'Получить настройки',
+		import_account:'Импортировать аккаунт',
 		account_metadata:'Обновить мета-данные',
 		get_account_history:'Получить историю для',
+		get_accounts_on_sale:'Получить аккаунты выставленные на продажу',
+		get_subaccounts_on_sale:'Получить субаккаунты выставленные на продажу',
 		get_current_account_history:'Получить историю аккаунта',
 		passwordless_auth:'Беспарольная аутентификация',
 	}

@@ -364,6 +364,9 @@ function action_info(){
 		if('get_settings'==action.operation){
 			operation_str=ltmp_arr.operations_caption.get_settings;
 		}
+		if('import_account'==action.operation){
+			operation_str=ltmp_arr.operations_caption.import_account;
+		}
 		if('account_metadata'==action.operation){
 			operation_str=ltmp_arr.operations_caption.account_metadata;
 		}
@@ -375,6 +378,12 @@ function action_info(){
 			if(''==action.account){
 				operation_str=ltmp_arr.operations_caption.get_current_account_history;
 			}
+		}
+		if('get_accounts_on_sale'==action.operation){
+			operation_str=ltmp_arr.operations_caption.get_accounts_on_sale;
+		}
+		if('get_subaccounts_on_sale'==action.operation){
+			operation_str=ltmp_arr.operations_caption.get_subaccounts_on_sale;
 		}
 		if('passwordless_auth'==action.operation){
 			operation_str=ltmp_arr.operations_caption.passwordless_auth;
@@ -504,9 +513,43 @@ function action_info(){
 			result+='<p class="orange">'+ltmp_arr.origin_caption+': '+action.origin+'</p>';
 			result+='</div>';
 		}
+		if('import_account'==action.operation){
+			result+='<p class="caption">'+operation_str+' '+escape_html(action.account?action.account:'')+'</p>';
+			result+='<p class="orange">'+ltmp_arr.origin_caption+': '+action.origin+'</p>';
+			if(typeof action.regular_key !== 'undefined'){
+				if(false!==action.regular_key){
+					result+='<p class="blue">'+ltmp_arr.form_regular_key_short+'</p>';
+				}
+			}
+			if(typeof action.active_key !== 'undefined'){
+				if(false!==action.active_key){
+					result+='<p class="blue">'+ltmp_arr.form_active_key_short+'</p>';
+				}
+			}
+			if(typeof action.memo_key !== 'undefined'){
+				if(false!==action.memo_key){
+					result+='<p class="blue">'+ltmp_arr.form_memo_key_short+'</p>';
+				}
+			}
+			result+='</div>';
+		}
 		if('get_account_history'==action.operation){
 			result+='<p class="caption">'+operation_str+' '+escape_html(action.account?action.account:'')+'</p>';
 			result+='<p class="orange">'+ltmp_arr.origin_caption+': '+action.origin+'</p>';
+			result+='</div>';
+		}
+		if('get_accounts_on_sale'==action.operation){
+			result+='<p class="caption">'+operation_str+'</p>';
+			result+='<p class="orange">'+ltmp_arr.origin_caption+': '+action.origin+'</p>';
+			result+='<p class="blue">'+ltmp_arr.from_caption+': <span class="">'+escape_html(''+action.from)+'</span></p>';
+			result+='<p class="blue">'+ltmp_arr.limit_caption+': <span class="">'+escape_html(''+action.limit)+'</span></p>';
+			result+='</div>';
+		}
+		if('get_subaccounts_on_sale'==action.operation){
+			result+='<p class="caption">'+operation_str+'</p>';
+			result+='<p class="orange">'+ltmp_arr.origin_caption+': '+action.origin+'</p>';
+			result+='<p class="blue">'+ltmp_arr.from_caption+': <span class="">'+escape_html(''+action.from)+'</span></p>';
+			result+='<p class="blue">'+ltmp_arr.limit_caption+': <span class="">'+escape_html(''+action.limit)+'</span></p>';
 			result+='</div>';
 		}
 		if('passwordless_auth'==action.operation){

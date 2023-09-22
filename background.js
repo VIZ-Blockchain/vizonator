@@ -376,12 +376,8 @@ var js_contentscript='contentscript.js';
 
 var api_http_gates=[
 	'https://api.viz.world/',
-	'https://node.viz.plus/',
 	'https://node.viz.cx/',
 	'https://viz.lexai.host/',
-	'https://vizrpc.lexai.host/',
-	'https://viz-node.dpos.space/',
-	'https://node.viz.media/',
 ];
 var social_gates=[
 	'social',
@@ -1145,6 +1141,40 @@ function inpage_action(request){
 		});
 	}
 	else
+	if('get_accounts_on_sale'==request.operation){
+		console.log(request);
+		viz.api.getAccountsOnSale(request.from,request.limit,function(err,accounts_response){
+			if(request.tab_id){
+				ext_browser.tabs.get(request.tab_id,function(tab){
+					if(ext_browser.runtime.lastError){
+						console.log(ext_browser.runtime.lastError.message);
+					}
+					else{
+						let response={'error':err,'result':accounts_response};
+						ext_browser.tabs.sendMessage(request.tab_id,{event:request.event,data:response});
+					}
+				});
+			}
+		});
+	}
+	else
+	if('get_subaccounts_on_sale'==request.operation){
+		console.log(request);
+		viz.api.getSubaccountsOnSale(request.from,request.limit,function(err,accounts_response){
+			if(request.tab_id){
+				ext_browser.tabs.get(request.tab_id,function(tab){
+					if(ext_browser.runtime.lastError){
+						console.log(ext_browser.runtime.lastError.message);
+					}
+					else{
+						let response={'error':err,'result':accounts_response};
+						ext_browser.tabs.sendMessage(request.tab_id,{event:request.event,data:response});
+					}
+				});
+			}
+		});
+	}
+	else
 	if('get_account'==request.operation){
 		if(request.tab_id){
 			ext_browser.tabs.get(request.tab_id,function(tab){
@@ -1179,6 +1209,87 @@ function inpage_action(request){
 						'result':settings
 					};
 					ext_browser.tabs.sendMessage(request.tab_id,{event:request.event,data:response});
+				}
+			});
+		}
+	}
+	else
+	if('import_account'==request.operation){
+		console.log(request);
+		if(request.tab_id){
+			ext_browser.tabs.get(request.tab_id,function(tab){
+				if(ext_browser.runtime.lastError){
+					console.log(ext_browser.runtime.lastError.message);
+				}
+				else{
+					let new_user=request.account.trim();
+					if('@'==new_user.substring(0,1)){
+						new_user=new_user.substring(1);
+					}
+					new_user=new_user.toLowerCase();
+
+					let regular_valid=false;
+					let memo_valid=false;
+					let active_valid=false;
+
+					let regular_key=request.regular_key;
+					if(typeof regular_key == 'string'){
+						regular_key=regular_key.trim();
+					}
+
+					let memo_key=request.memo_key;
+					if(typeof memo_key == 'string'){
+						memo_key=memo_key.trim();
+					}
+
+					let active_key=request.active_key;
+					if(typeof active_key == 'string'){
+						active_key=active_key.trim();
+					}
+
+					regular_valid=viz.auth.isWif(regular_key);
+					if(''==memo_key || false===memo_key){
+						memo_valid=true;
+					}
+					else{
+						memo_valid=viz.auth.isWif(memo_key);
+					}
+					if(''==active_key || false===active_key){
+						active_valid=true;
+					}
+					else{
+						active_valid=viz.auth.isWif(active_key);
+					}
+
+					//fix if only active key is provided
+					if(!regular_valid){
+						if(active_valid){
+							regular_valid=true;
+							regular_key=active_key;
+						}
+					}
+
+					if(regular_valid && memo_valid && active_valid){
+						current_user=new_user;
+						state.current_user=current_user;
+						users[current_user]={'regular_key':regular_key,'memo_key':memo_key,'active_key':active_key};
+
+						save_state(function(){
+							let response={
+								'error':false,
+								'result':true
+							};
+							ext_browser.tabs.sendMessage(request.tab_id,{event:request.event,data:response});
+						});
+					}
+					else{
+						let response={
+							'error':'invalid keys',
+							'result':false
+						};
+						ext_browser.tabs.sendMessage(request.tab_id,{event:request.event,data:response});
+					}
+
 				}
 			});
 		}
@@ -2153,6 +2264,32 @@ function main_app(){
 									limit:request.limit,
 								};
 							}
+							if('get_accounts_on_sale'==request.operation){
+								action_request={
+									tab_id,
+									origin,
+									id:request.id,
+									operation:request.operation,
+									operation_type:request.operation_type,
+									event:request.event,
+
+									from:request.from,
+									limit:request.limit,
+								};
+							}
+							if('get_subaccounts_on_sale'==request.operation){
+								action_request={
+									tab_id,
+									origin,
+									id:request.id,
+									operation:request.operation,
+									operation_type:request.operation_type,
+									event:request.event,
+
+									from:request.from,
+									limit:request.limit,
+								};
+							}
 							if('get_account'==request.operation){
 								action_request={
 									tab_id,
@@ -2171,6 +2308,21 @@ function main_app(){
 									operation:request.operation,
 									operation_type:request.operation_type,
 									event:request.event,
+								};
+							}
+							if('import_account'==request.operation){
+								action_request={
+									tab_id,
+									origin,
+									id:request.id,
+									operation:request.operation,
+									operation_type:request.operation_type,
+									event:request.event,
+
+									account:request.account,
+									regular_key:request.regular_key,
+									active_key:request.active_key,
+									memo_key:request.memo_key,
 								};
 							}
 							if(false===trustline){//no trustline for origin, ask user

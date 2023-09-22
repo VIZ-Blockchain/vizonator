@@ -163,6 +163,9 @@ var ltmp_en_arr={
 	protocol_caption:'Protocol',
 	json_caption:'JSON',
 	vote_percent_caption:'Vote percent',
+
+	from_caption:'From',
+	limit_caption:'Limit',
 	operations_caption:{
 		transfer:'Transfer to',
 		transfer_to_vesting:'Stake to',
@@ -175,8 +178,11 @@ var ltmp_en_arr={
 		get_custom_current_account:'Get current account info',
 		get_account:'Get current account',
 		get_settings:'Get settings',
+		import_account:'Import account',
 		account_metadata:'Update meta for',
 		get_account_history:'Get history for',
+		get_accounts_on_sale:'Get accounts on sale',
+		get_subaccounts_on_sale:'Get subaccounts on sale',
 		get_current_account_history:'Get account history',
 		passwordless_auth:'Passwordless authentification',
 	}
