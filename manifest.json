@@ -1,17 +1,17 @@
 {
 	"name": "VIZonator",
-	"version": "0.54",
-	"description": "VIZ Extension! Adds web3 provider to pages, available as variable: vizonator.",
-	"permissions": ["alarms","activeTab","tabs","http://*/*","https://*/*","*://*/*"],
+	"version": "0.55",
+	"description": "VIZ Extension! Adds web3 provider to pages, available variable: vizonator.",
+	"permissions": ["alarms","activeTab","tabs","scripting","storage"],
+	"host_permissions": ["http://*/*","https://*/*"],
 	"background": {
-		"scripts": ["viz.min.js","ltmp_arr.js","ltmp_en.js","ltmp_ru.js","background.js"],
-		"persistent": true
+		"service_worker": "background.js"
 	},
 	"options_ui": {
 		"page": "options.html",
 		"open_in_tab": true
 	},
-	"browser_action": {
+	"action": {
 		"default_popup": "popup.html",
 		"default_title": "VIZonator",
 		"default_icon": {
@@ -27,6 +27,8 @@
 		"48": "images/icon48.png",
 		"128": "images/icon128.png"
 	},
-	"content_security_policy": "script-src 'self'; object-src 'self'",
-	"manifest_version": 2
+	"content_security_policy": {
+		"extension_pages": "script-src 'self'; object-src 'self'"
+	},
+	"manifest_version": 3
 }

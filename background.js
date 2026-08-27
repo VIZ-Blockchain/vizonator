@@ -1,4 +1,39 @@
 'use strict';
+/* MV3: load scripts that were background.scripts[] in MV2 */
+importScripts('viz.min.js','ltmp_arr.js','ltmp_en.js','ltmp_ru.js');
+
+/* MV3: localStorage polyfill backed by chrome.storage.local.
+   Service workers have no localStorage; we keep an in-memory cache
+   and sync writes to chrome.storage.local. */
+var _lsCache={};
+var localStorage=new Proxy(_lsCache,{
+	get:function(target,prop){
+		if(prop==='getItem')return function(k){return target.hasOwnProperty(k)?target[k]:undefined;};
+		if(prop==='setItem')return function(k,v){target[k]=String(v);chrome.storage.local.set({[k]:String(v)});};
+		if(prop==='removeItem')return function(k){delete target[k];chrome.storage.local.remove(k);};
+		return target[prop];
+	},
+	set:function(target,prop,value){
+		target[prop]=String(value);
+		chrome.storage.local.set({[prop]:String(value)});
+		return true;
+	},
+	deleteProperty:function(target,prop){
+		delete target[prop];
+		chrome.storage.local.remove(prop);
+		return true;
+	}
+});
+function lsLoad(items){
+	for(var k in items){_lsCache[k]=items[k];}
+}
+function lsLoadAll(cb){
+	chrome.storage.local.get(null,function(items){
+		lsLoad(items);
+		if(cb)cb();
+	});
+}
+
 /* Extensions state vars */
 var ext_browser;
 var ext_firefox=false;
@@ -89,26 +124,16 @@ function load_state(password,callback){
 		state.rules=rules;
 
 		let find_lang=false;
-		for(let i in window.navigator.languages){
-			if(typeof langs_arr[window.navigator.languages[i].toLowerCase()] !== 'undefined'){
-				let try_lang=langs_arr[window.navigator.languages[i].toLowerCase()];
-				if(typeof available_langs[try_lang] !== 'undefined'){
-					settings.lang=langs_arr[try_lang];
-					find_lang=true;
-					break;
-				}
-			}
-		}
-		if(!find_lang){
-			if(typeof langs_arr[window.navigator.language.toLowerCase()] !== 'undefined'){
-				let try_lang=langs_arr[window.navigator.language.toLowerCase()];
-				if(typeof available_langs[try_lang] !== 'undefined'){
-					settings.lang=langs_arr[try_lang];
-				}
+		let ui_lang=chrome.i18n.getUILanguage().toLowerCase();
+		if(typeof langs_arr[ui_lang] !== 'undefined'){
+			let try_lang=langs_arr[ui_lang];
+			if(typeof available_langs[try_lang] !== 'undefined'){
+				settings.lang=try_lang;
+				find_lang=true;
 			}
 		}
 		//load localization templates
-		ltmp_arr=window['ltmp_'+settings.lang+'_arr'];
+		ltmp_arr=globalThis['ltmp_'+settings.lang+'_arr'];
 		console.log('reinit load_state new state',state);
 		callback(true);
 	}
@@ -180,7 +205,7 @@ function fill_vars(){
 		rules=state.rules;
 	}
 	//load localization templates
-	ltmp_arr=window['ltmp_'+settings.lang+'_arr'];
+	ltmp_arr=globalThis['ltmp_'+settings.lang+'_arr'];
 	//load last energy value
 	if(typeof localStorage['current_energy'] !== 'undefined'){
 		current_energy=localStorage['current_energy'];
@@ -393,15 +418,10 @@ var api_gate=default_api_gate;
 console.log('using default node',default_api_gate);
 viz.config.set('websocket',default_api_gate);
 
-/* Load extension version and check if update is needed */
+/* Load extension version and check if update version initialized asynchronously in startup sequence */
 var global_version=1;
-var version=localStorage['version'];
+var version;
 var version_update=false;//need update storage rules
-if(typeof version === 'undefined'){
-	version=1;
-	version_update=true;
-	localStorage['version']=version;
-}
 
 function update_version(callback){
 	if(typeof callback === 'undefined'){callback=function(){};}
@@ -449,13 +469,13 @@ function viz_timer(){
 	if(state.encoded){
 		if(!state.decoded){
 			need_encode=true;
-			ext_browser.browserAction.setBadgeBackgroundColor({color:"rgba(136,136,136,0.4)"});
-			ext_browser.browserAction.setBadgeText({text:"?"});
+			ext_browser.action.setBadgeBackgroundColor({color:"rgba(136,136,136,0.4)"});
+			ext_browser.action.setBadgeText({text:"?"});
 		}
 	}
 	if(!need_encode){
 		if(''==current_user){
-			ext_browser.browserAction.setBadgeText({text:"?"});
+			ext_browser.action.setBadgeText({text:"?"});
 		}
 		else{
 			viz.api.getAccount(current_user,'V',function(err,response){
@@ -495,8 +515,8 @@ function viz_timer(){
 						localStorage['current_withdraw_rate']=current_withdraw_rate;
 						localStorage['current_next_vesting_withdrawal']=current_next_vesting_withdrawal;
 
-						ext_browser.browserAction.setBadgeBackgroundColor({color:"rgba(136,136,136,0.4)"});
-						ext_browser.browserAction.setBadgeText({text:''+parseInt(parseFloat(new_energy)/100)+'%'});
+						ext_browser.action.setBadgeBackgroundColor({color:"rgba(136,136,136,0.4)"});
+						ext_browser.action.setBadgeText({text:''+parseInt(parseFloat(new_energy)/100)+'%'});
 					}
 				}
 			});
@@ -590,7 +610,7 @@ function vizonator_action(request){
 								localStorage['current_energy']=current_energy;
 
 								let new_energy=current_energy;
-								ext_browser.browserAction.setBadgeText({text:''+parseInt(parseFloat(new_energy)/100)+'%'});
+								ext_browser.action.setBadgeText({text:''+parseInt(parseFloat(new_energy)/100)+'%'});
 							}
 						}
 					});
@@ -689,7 +709,7 @@ function inpage_action(request){
 										localStorage['current_energy']=current_energy;
 
 										let new_energy=current_energy;
-										ext_browser.browserAction.setBadgeText({text:''+parseInt(parseFloat(new_energy)/100)+'%'});
+										ext_browser.action.setBadgeText({text:''+parseInt(parseFloat(new_energy)/100)+'%'});
 									}
 								}
 							});
@@ -761,7 +781,7 @@ function inpage_action(request){
 										localStorage['current_energy']=current_energy;
 
 										let new_energy=current_energy;
-										ext_browser.browserAction.setBadgeText({text:''+parseInt(parseFloat(new_energy)/100)+'%'});
+										ext_browser.action.setBadgeText({text:''+parseInt(parseFloat(new_energy)/100)+'%'});
 									}
 								}
 							});
@@ -1432,17 +1452,17 @@ function check_viz_url(tab_id,url){
 		subdomain=subdomain.substr(1+subdomain.lastIndexOf('.',subdomain.lastIndexOf('.')-1))
 	}
 	let found=function(tab_id,path){
-		ext_browser.browserAction.setIcon({path:"images/icon128.png"});
+		ext_browser.action.setIcon({path:"images/icon128.png"});
 		if(''==current_user){
-			ext_browser.browserAction.setBadgeBackgroundColor({color:"rgba(187,0,0,0.4)"});
+			ext_browser.action.setBadgeBackgroundColor({color:"rgba(187,0,0,0.4)"});
 		}
 		else{
-			ext_browser.browserAction.setBadgeBackgroundColor({color:"rgba(32,160,0,0.4)"});
+			ext_browser.action.setBadgeBackgroundColor({color:"rgba(32,160,0,0.4)"});
 		}
 	};
 	let not_found=function(){
-		ext_browser.browserAction.setIcon({path:"images/gray128.png"});
-		ext_browser.browserAction.setBadgeBackgroundColor({color:"rgba(136,136,136,0.4)"});
+		ext_browser.action.setIcon({path:"images/gray128.png"});
+		ext_browser.action.setBadgeBackgroundColor({color:"rgba(136,136,136,0.4)"});
 	}
 	ext_browser.tabs.get(tab_id,function(tab){
 		if(ext_browser.runtime.lastError){
@@ -1450,17 +1470,17 @@ function check_viz_url(tab_id,url){
 		}
 		else{
 			if(tab.id>0){
-				ext_browser.tabs.executeScript(tab.id,{file:js_framework},function(){
+				ext_browser.scripting.executeScript({target:{tabId:tab.id},files:[js_framework]},function(){
 					if(ext_browser.runtime.lastError){
 						console.log(ext_browser.runtime.lastError.message);
 						not_found();
 					}
 					else{
-						ext_browser.tabs.executeScript(tab.id,{file:'gates/'+domain+'.js'},function(){
+						ext_browser.scripting.executeScript({target:{tabId:tab.id},files:['gates/'+domain+'.js']},function(){
 							if(ext_browser.runtime.lastError){
 								console.log(ext_browser.runtime.lastError.message);
 								if(subdomain!=domain){
-									ext_browser.tabs.executeScript(tab.id,{file:'subgates/'+subdomain+'.js'},function(){
+									ext_browser.scripting.executeScript({target:{tabId:tab.id},files:['subgates/'+subdomain+'.js']},function(){
 										if(ext_browser.runtime.lastError){
 											console.log(ext_browser.runtime.lastError.message);
 											not_found();
@@ -1480,7 +1500,7 @@ function check_viz_url(tab_id,url){
 						});
 					}
 				});
-				ext_browser.tabs.executeScript(tab.id,{file:js_contentscript},function(){
+				ext_browser.scripting.executeScript({target:{tabId:tab.id},files:[js_contentscript]},function(){
 					if(ext_browser.runtime.lastError){
 						console.log('contentscript NOT injected');
 					}
@@ -1493,18 +1513,27 @@ function check_viz_url(tab_id,url){
 	});
 }
 
-update_version(function(){
-	load_state('',function(encode_status){
-		console.log('main init load_state',encode_status,state);
-		main_app();
+/* MV3: load localStorage cache from chrome.storage.local before init */
+lsLoadAll(function(){
+	version=localStorage['version'];
+	if(typeof version === 'undefined'){
+		version=1;
+		version_update=true;
+		localStorage['version']=version;
+	}
+	update_version(function(){
+		load_state('',function(encode_status){
+			console.log('main init load_state',encode_status,state);
+			main_app();
+		});
 	});
 });
 
 function main_app(){
 	select_best_gate();
-	ext_browser.browserAction.setIcon({path:"images/gray128.png"});
-	ext_browser.browserAction.setBadgeBackgroundColor({color:"rgba(136,136,136,0.4)"});
-	ext_browser.browserAction.setBadgeText({text:"..."});
+	ext_browser.action.setIcon({path:"images/gray128.png"});
+	ext_browser.action.setBadgeBackgroundColor({color:"rgba(136,136,136,0.4)"});
+	ext_browser.action.setBadgeText({text:"..."});
 	ext_browser.alarms.create('viz_timer',{when:Date.now()+1});
 
 	ext_browser.runtime.onMessage.addListener(function(request,sender,sendResponse){
@@ -1769,7 +1798,7 @@ function main_app(){
 											localStorage['current_energy']=current_energy;
 
 											let new_energy=current_energy;
-											ext_browser.browserAction.setBadgeText({text:''+parseInt(parseFloat(new_energy)/100)+'%'});
+											ext_browser.action.setBadgeText({text:''+parseInt(parseFloat(new_energy)/100)+'%'});
 										}
 									});
 								}
@@ -1824,7 +1853,7 @@ function main_app(){
 											localStorage['current_energy']=current_energy;
 
 											let new_energy=current_energy;
-											ext_browser.browserAction.setBadgeText({text:''+parseInt(parseFloat(new_energy)/100)+'%'});
+											ext_browser.action.setBadgeText({text:''+parseInt(parseFloat(new_energy)/100)+'%'});
 										}
 									});
 								}
@@ -2520,7 +2549,7 @@ function main_app(){
 			break;
 		}
 
-		ext_browser.browserAction.setBadgeText({text:'?'});
+		ext_browser.action.setBadgeText({text:'?'});
 		ext_browser.tabs.query({active:true},function(tabs){
 			let tab=tabs[0];
 			check_viz_url(tab.id,tab.url);
@@ -2530,12 +2559,12 @@ function main_app(){
 
 	ext_browser.runtime.onSuspend.addListener(function(){
 		console.log('onSuspend');
-		ext_browser.browserAction.setBadgeBackgroundColor({color:"rgba(136,136,136,0.4)"});
+		ext_browser.action.setBadgeBackgroundColor({color:"rgba(136,136,136,0.4)"});
 	});
 
 	ext_browser.runtime.onStartup.addListener(function(){
 		console.log('onStartup');
-		ext_browser.browserAction.setBadgeText({text:""});
+		ext_browser.action.setBadgeText({text:""});
 		ext_browser.tabs.query({active:true},function(tabs){
 			let tab=tabs[0];
 			check_viz_url(tab.id,tab.url);
