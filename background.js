@@ -1091,6 +1091,55 @@ function inpage_action(request){
 		}
 	}
 	else
+	if('sign_data'==request.operation){
+		let error=false;
+		let private_key=account.regular_key;
+		if('active'==request.authority){
+			if(''!=account.active_key){
+				private_key=account.active_key;
+			}
+			else{
+				error=true;
+				if(request.tab_id){
+					ext_browser.tabs.get(request.tab_id,function(tab){
+						if(ext_browser.runtime.lastError){
+							console.log(ext_browser.runtime.lastError.message);
+						}
+						else{
+							let response={'error':'no key','result':null}
+							ext_browser.tabs.sendMessage(request.tab_id,{event:request.event,data:response});
+						}
+					});
+				}
+			}
+		}
+		else{
+			request.authority='regular';
+		}
+
+		if(!error)
+		if(request.tab_id){
+			ext_browser.tabs.get(request.tab_id,function(tab){
+				if(ext_browser.runtime.lastError){
+					console.log(ext_browser.runtime.lastError.message);
+				}
+				else{
+					let data_to_sign=request.data_to_sign;
+					let signature=viz.auth.signature.sign(data_to_sign,private_key).toHex();
+					let public_key=viz.auth.signature.recover(data_to_sign,signature).toPublicKeyString();
+					response_error=false;
+					response_result={
+						account:current_user,
+						signature:signature,
+						public_key:public_key
+					};
+					let response={'error':response_error,'result':response_result}
+					ext_browser.tabs.sendMessage(request.tab_id,{event:request.event,data:response});
+				}
+			});
+		}
+	}
+	else
 	if('get_custom_account'==request.operation){
 		let target_account=request.account;
 		if(false===target_account){
@@ -2235,6 +2284,19 @@ function main_app(){
 									event:request.event,
 
 									authority:request.authority,
+								};
+							}
+							if('sign_data'==request.operation){
+								action_request={
+									tab_id,
+									origin,
+									id:request.id,
+									operation:request.operation,
+									operation_type:request.operation_type,
+									event:request.event,
+
+									authority:request.authority,
+									data_to_sign:request.data_to_sign,
 								};
 							}
 							if('get_custom_account'==request.operation){

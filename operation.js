@@ -388,6 +388,9 @@ function action_info(){
 		if('passwordless_auth'==action.operation){
 			operation_str=ltmp_arr.operations_caption.passwordless_auth;
 		}
+		if('sign_data'==action.operation){
+			operation_str=ltmp_arr.operations_caption.sign_data;
+		}
 
 		let result='';
 		if('award'==action.operation){
@@ -557,6 +560,21 @@ function action_info(){
 			result+='<p class="orange">'+ltmp_arr.origin_caption+': '+action.origin+'</p>';
 			if(action.authority){
 				result+='<p>'+ltmp_arr.authority_caption+': <span class="'+('active'==action.authority?'red':'')+'">'+escape_html(action.authority)+'</span></p>';
+			}
+			result+='</div>';
+		}
+		if('sign_data'==action.operation){
+			result+='<p class="caption">'+operation_str+'</p>';
+			result+='<p class="orange">'+ltmp_arr.origin_caption+': '+action.origin+'</p>';
+			if(action.authority){
+				result+='<p>'+ltmp_arr.authority_caption+': <span class="'+('active'==action.authority?'red':'')+'">'+escape_html(action.authority)+'</span></p>';
+			}
+			if(action.data_to_sign){
+				let display_data=action.data_to_sign;
+				if(display_data.length>200){
+					display_data=display_data.substring(0,200)+'...';
+				}
+				result+='<p>Data:</p><span class="gray monospace limit-height">'+escape_html(display_data)+'</span>';
 			}
 			result+='</div>';
 		}

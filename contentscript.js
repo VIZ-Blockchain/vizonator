@@ -486,6 +486,34 @@ document.addEventListener('vizonator',function(event){
 			action_top,action_left,action_width,action_height
 		});
 	}
+	else
+	if('sign_data'==data_obj.action){
+		if(typeof data.data == 'undefined'){
+			error='empty data';
+			document.dispatchEvent(new CustomEvent('vizonator_'+data_obj.event,{detail:JSON.stringify({'error':error,'result':result})}));
+		}
+		else{
+			if(typeof data.authority == 'undefined'){
+				data.authority='regular';
+			}
+			else{
+				if('active'!=data.authority){
+					data.authority='regular';
+				}
+			}
+			ext_browser.runtime.sendMessage({
+				inpage:true,
+				operation:'sign_data',
+				operation_type:['sign','account',data.authority],
+				event:data_obj.event,
+
+				authority:data.authority,
+				data_to_sign:data.data,
+
+				action_top,action_left,action_width,action_height
+			});
+		}
+	}
 });
 
 //inpage script
@@ -592,6 +620,11 @@ if(typeof window.vizonator == 'undefined'){
 			let event_num=this.event_numerator;
 			this.event_numerator++;
 			bind_event_callback('passwordless_auth',event_num,data,callback);
+		},
+		'sign_data':function(data,callback){
+			let event_num=this.event_numerator;
+			this.event_numerator++;
+			bind_event_callback('sign_data',event_num,data,callback);
 		},
 	};
 	if(typeof window.vizonator_on_load == 'function'){
