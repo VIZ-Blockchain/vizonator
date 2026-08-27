@@ -185,5 +185,6 @@ var ltmp_en_arr={
 		get_subaccounts_on_sale:'Get subaccounts on sale',
 		get_current_account_history:'Get account history',
 		passwordless_auth:'Passwordless authentification',
+		sign_data:'Sign data',
 	}
 };

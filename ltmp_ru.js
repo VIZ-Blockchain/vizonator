@@ -185,5 +185,6 @@ var ltmp_ru_arr={
 		get_subaccounts_on_sale:'Получить субаккаунты выставленные на продажу',
 		get_current_account_history:'Получить историю аккаунта',
 		passwordless_auth:'Беспарольная аутентификация',
+		sign_data:'Подписать данные',
 	}
 };
