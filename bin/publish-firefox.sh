@@ -5,25 +5,25 @@ ADDON_SLUG="vizonator"
 AMO_API="https://addons.mozilla.org/api/v5"
 
 usage() {
-  echo "Usage: $0 [--publish] [--channel listed|unlisted]"
+  echo "Usage: $0 [--draft] [--channel listed|unlisted]"
   echo ""
   echo "Environment variables:"
   echo "  FIREFOX_API_KEY     JWT issuer (from AMO developer hub)"
   echo "  FIREFOX_API_SECRET  JWT secret (from AMO developer hub)"
   echo ""
   echo "Options:"
-  echo "  --publish    Auto-approve after upload (default: manual review)"
+  echo "  --draft      Upload only, skip review submission (default: submit for review)"
   echo "  --channel    listed (default) or unlisted"
   echo "  --zip FILE   Upload existing XPI instead of building"
   exit 1
 }
 
-PUBLISH=false
+PUBLISH=true
 CHANNEL="listed"
 ZIP_FILE=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --publish) PUBLISH=true; shift ;;
+    --draft) PUBLISH=false; shift ;;
     --channel) CHANNEL="$2"; shift 2 ;;
     --zip) ZIP_FILE="$2"; shift 2 ;;
     *) usage ;;
@@ -77,7 +77,7 @@ if [ "$PUBLISH" = true ]; then
     -d "{\"approved\": true}")
   echo "Review response: $REVIEW_RESP"
 else
-  echo "Uploaded. Review manually at: https://addons.mozilla.org/developers/addon/vizonator/versions/"
+  echo "Uploaded as draft. Run without --draft to submit for review."
 fi
 
 echo "Done."

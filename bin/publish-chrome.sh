@@ -5,7 +5,7 @@ EXTENSION_ID="iehoehfkanaobnbldjfjfabbpaiiojnp"
 API_URL="https://www.googleapis.com"
 
 usage() {
-  echo "Usage: $0 [--publish] [--token REFRESH_TOKEN] [--client-id ID] [--client-secret SECRET]"
+  echo "Usage: $0 [--draft] [--token REFRESH_TOKEN] [--client-id ID] [--client-secret SECRET]"
   echo ""
   echo "Environment variables (override flags):"
   echo "  CHROME_REFRESH_TOKEN   OAuth2 refresh token"
@@ -13,16 +13,16 @@ usage() {
   echo "  CHROME_CLIENT_SECRET   OAuth2 client secret"
   echo ""
   echo "Options:"
-  echo "  --publish    Submit for review immediately (default: upload as draft)"
+  echo "  --draft      Upload only, do not submit for review (default: publish)"
   echo "  --zip FILE   Upload existing ZIP instead of building from git"
   exit 1
 }
 
-PUBLISH=false
+PUBLISH=true
 ZIP_FILE=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --publish) PUBLISH=true; shift ;;
+    --draft) PUBLISH=false; shift ;;
     --token) CHROME_REFRESH_TOKEN="$2"; shift 2 ;;
     --client-id) CHROME_CLIENT_ID="$2"; shift 2 ;;
     --client-secret) CHROME_CLIENT_SECRET="$2"; shift 2 ;;
@@ -73,7 +73,7 @@ fi
 if [ "$PUBLISH" = true ]; then
   echo "Publishing..."
   PUBLISH_RESP=$(curl -s -X POST \
-    "${API_URL}/chromewebstore/v1.1/items/${EXTENSION_ID}/publish?publishTarget=trustedTesters" \
+    "${API_URL}/chromewebstore/v1.1/items/${EXTENSION_ID}/publish?publishTarget=default" \
     -H "Authorization: Bearer ${ACCESS_TOKEN}" \
     -H "x-goog-api-version: 1.1" \
     -H "Content-Length: 0")
@@ -83,9 +83,9 @@ if [ "$PUBLISH" = true ]; then
     echo "Publish response: $PUBLISH_RESP"
     exit 1
   fi
-  echo "Published (trusted testers). Use publishTarget=default for full publish."
+  echo "Submitted for review (public release)."
 else
-  echo "Uploaded as draft. Add --publish to submit for review."
+  echo "Uploaded as draft. Run without --draft to submit for review."
 fi
 
 echo "Done. Review at: https://chrome.google.com/webstore/developer/edit/${EXTENSION_ID}"

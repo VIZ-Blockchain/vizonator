@@ -6,12 +6,12 @@ on:
       - 'v*'
   workflow_dispatch:
     inputs:
-      publish_chrome:
-        description: 'Submit Chrome for review'
+      draft_chrome:
+        description: 'Chrome: upload as draft (skip review)'
         type: boolean
         default: false
-      publish_firefox:
-        description: 'Submit Firefox for review'
+      draft_firefox:
+        description: 'Firefox: upload as draft (skip review)'
         type: boolean
         default: false
 
@@ -27,20 +27,18 @@ jobs:
           ./bin/build-zip.sh /tmp/vizonator.zip
 
       - name: Publish to Chrome Web Store
-        if: github.event_name == 'push' || inputs.publish_chrome
         env:
           CHROME_CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
           CHROME_CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
           CHROME_REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
         run: |
           chmod +x bin/publish-chrome.sh
-          ./bin/publish-chrome.sh --zip /tmp/vizonator.zip ${{ inputs.publish_chrome && '--publish' || '' }}
+          ./bin/publish-chrome.sh --zip /tmp/vizonator.zip ${{ inputs.draft_chrome && '--draft' || '' }}
 
       - name: Publish to Firefox AMO
-        if: github.event_name == 'push' || inputs.publish_firefox
         env:
           FIREFOX_API_KEY: ${{ secrets.FIREFOX_API_KEY }}
           FIREFOX_API_SECRET: ${{ secrets.FIREFOX_API_SECRET }}
         run: |
           chmod +x bin/publish-firefox.sh
-          ./bin/publish-firefox.sh --zip /tmp/vizonator.zip ${{ inputs.publish_firefox && '--publish' || '' }}
+          ./bin/publish-firefox.sh --zip /tmp/vizonator.zip ${{ inputs.draft_firefox && '--draft' || '' }}

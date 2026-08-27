@@ -39,11 +39,11 @@ CHROME_REFRESH_TOKEN=1//xxx
 ### 4. Manual Deploy
 
 ```bash
-# Upload as draft
+# Upload and submit for review (default)
 ./bin/publish-chrome.sh
 
-# Upload and submit for review
-./bin/publish-chrome.sh --publish
+# Upload as draft only (skip review)
+./bin/publish-chrome.sh --draft
 ```
 
 ### 5. Auto Deploy on Tag
@@ -53,7 +53,7 @@ git tag v0.56
 git push origin v0.56
 ```
 
-GitHub Actions will build and upload automatically.
+GitHub Actions will build, upload, and submit for review automatically.
 
 ---
 
@@ -96,18 +96,18 @@ Firefox supports MV3 since v109. Add to `manifest.json`:
 ### 4. Manual Deploy
 
 ```bash
-# Upload for manual review
+# Upload and submit for review (default)
 ./bin/publish-firefox.sh
 
-# Upload and auto-approve (unlisted only)
-./bin/publish-firefox.sh --publish --channel unlisted
+# Upload as draft only (skip review)
+./bin/publish-firefox.sh --draft --channel unlisted
 ```
 
 **Note:** Listed add-ons require manual review by Mozilla. Unlisted can be auto-approved.
 
 ### 5. Auto Deploy on Tag
 
-Same as Chrome — tag triggers both.
+Same as Chrome — tag triggers both, both submit for review.
 
 ---
 
