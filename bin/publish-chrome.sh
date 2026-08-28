@@ -62,7 +62,7 @@ UPLOAD_RESP=$(curl -s -X PUT \
   -H "Content-Type: application/zip" \
   --data-binary "@${ZIP_FILE}")
 
-UPLOAD_STATUS=$(echo "$UPLOAD_RESP" | grep -o '"uploadState":"[^"]*"' | cut -d'"' -f4)
+UPLOAD_STATUS=$(echo "$UPLOAD_RESP" | grep -o '"uploadState"[[:space:]]*:[[:space:]]*"[^"]*"' | grep -o '"[^"]*"$' | cut -d'"' -f2)
 echo "Upload state: ${UPLOAD_STATUS:-unknown}"
 
 if [ "$UPLOAD_STATUS" != "SUCCESS" ] && [ "$UPLOAD_STATUS" != "IN_PROGRESS" ]; then
@@ -77,7 +77,7 @@ if [ "$PUBLISH" = true ]; then
     -H "Authorization: Bearer ${ACCESS_TOKEN}" \
     -H "x-goog-api-version: 1.1" \
     -H "Content-Length: 0")
-  PUB_STATUS=$(echo "$PUBLISH_RESP" | grep -o '"status":"[^"]*"' | cut -d'"' -f4)
+  PUB_STATUS=$(echo "$PUBLISH_RESP" | grep -o '"status"[[:space:]]*:[[:space:]]*"[^"]*"' | grep -o '"[^"]*"$' | cut -d'"' -f2)
   echo "Publish status: ${PUB_STATUS:-unknown}"
   if [ "$PUB_STATUS" != "OK" ]; then
     echo "Publish response: $PUBLISH_RESP"
