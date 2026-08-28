@@ -51,7 +51,7 @@ ACCESS_RESP=$(curl -s -X POST "https://oauth2.googleapis.com/token" \
   -d "refresh_token=$CHROME_REFRESH_TOKEN" \
   -d "grant_type=refresh_token")
 
-ACCESS_TOKEN=$(echo "$ACCESS_RESP" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+ACCESS_TOKEN=$(echo "$ACCESS_RESP" | grep -o '"access_token"[[:space:]]*:[[:space:]]*"[^"]*"' | grep -o '"[^"]*"$' | cut -d'"' -f2)
 : "${ACCESS_TOKEN:?Failed to get access token: $ACCESS_RESP}"
 
 echo "Uploading to Chrome Web Store..."
