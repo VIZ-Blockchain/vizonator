@@ -77,7 +77,7 @@ if [ "$PUBLISH" = true ]; then
     -H "Authorization: Bearer ${ACCESS_TOKEN}" \
     -H "x-goog-api-version: 1.1" \
     -H "Content-Length: 0")
-  PUB_STATUS=$(echo "$PUBLISH_RESP" | grep -o '"status"[[:space:]]*:[[:space:]]*"[^"]*"' | grep -o '"[^"]*"$' | cut -d'"' -f2)
+  PUB_STATUS=$(echo "$PUBLISH_RESP" | grep -o '"status"[[:space:]]*:[[:space:]]*\[[[:space:]]*"[^"]*"' | grep -o '"[^"]*"$' | cut -d'"' -f2)
   echo "Publish status: ${PUB_STATUS:-unknown}"
   if [ "$PUB_STATUS" != "OK" ]; then
     echo "Publish response: $PUBLISH_RESP"
