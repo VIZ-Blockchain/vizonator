@@ -47,6 +47,7 @@ function get_state(callback){
 	ext_browser.runtime.sendMessage({get_state:true},function(response){
 		console.log('get_state response',response);
 		if(!response){
+			callback(false);
 			return;
 		}
 		if(false!==response.decoded){
@@ -233,7 +234,7 @@ var lock_view=function(){
 			save_state(function(){
 				ext_browser.runtime.sendMessage({reload_state:true},function(response){
 					console.log('.update-encode response',response);
-					if(null===response){
+					if(!response){
 						return;
 					}
 					lock_view();
@@ -250,7 +251,7 @@ var lock_view=function(){
 		save_state(function(){
 			ext_browser.runtime.sendMessage({reload_state:true},function(response){
 				console.log('.remove-encode response',response);
-				if(null===response){
+				if(!response){
 					return;
 				}
 				lock_view();
