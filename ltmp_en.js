@@ -16,6 +16,7 @@ var ltmp_en_arr={
 	add_account_title:'Adding an account',
 	edit_account_title:'Edit account',
 	add_account_caption:'Add account',
+	create_account_link:'Create account',
 
 	empty_account:'account was not provided',
 	connect_account:'Connect VIZ account',

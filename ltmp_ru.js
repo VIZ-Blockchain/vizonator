@@ -16,6 +16,7 @@ var ltmp_ru_arr={
 	add_account_title:'Добавление аккаунта',
 	edit_account_title:'Изменение аккаунта',
 	add_account_caption:'Добавить аккаунт',
+	create_account_link:'Создать аккаунт',
 
 	empty_account:'аккаунт не был предоставлен',
 	connect_account:'Подключите аккаунт VIZ',

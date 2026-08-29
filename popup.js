@@ -486,6 +486,7 @@ var add_account_form=function(){
 	$('.window-wrapper').append(modal_html);
 
 	let form_html='';
+	form_html+='<p class="text-center"><a href="https://start.viz.world/" target="_blank">'+ltmp_arr.create_account_link+'</a></p>';
 	form_html+='<p><input type="text" autocomplete="off" class="login" placeholder="'+ltmp_arr.form_login+'">';
 	form_html+='<span class="accounts-input-hint"><span class="red">*</span></span></p>';
 	form_html+='<p><input type="password" autocomplete="off" class="regular_key" placeholder="'+ltmp_arr.form_regular_key_short+'">';
