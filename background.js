@@ -1514,6 +1514,20 @@ function check_viz_url(tab_id,url){
 }
 
 /* MV3: load localStorage cache from chrome.storage.local before init */
+var bg_initialized=false;
+
+/* Early message listener: respond to get_state even before full init */
+if(typeof ext_browser !== 'undefined' && ext_browser.runtime && ext_browser.runtime.onMessage){
+	ext_browser.runtime.onMessage.addListener(function(request,sender,sendResponse){
+		if(!bg_initialized){
+			if(typeof request.get_state !== 'undefined'){
+				sendResponse({decoded:false,initializing:true});
+				return true;
+			}
+		}
+	});
+}
+
 lsLoadAll(function(){
 	version=localStorage['version'];
 	if(typeof version === 'undefined'){
@@ -1524,6 +1538,7 @@ lsLoadAll(function(){
 	update_version(function(){
 		load_state('',function(encode_status){
 			console.log('main init load_state',encode_status,state);
+			bg_initialized=true;
 			main_app();
 		});
 	});
