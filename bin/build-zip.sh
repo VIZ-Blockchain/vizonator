@@ -14,7 +14,6 @@ python3 -c "
 import zipfile, os
 
 exclude = {'.git', '.github', 'bin', 'screenshot', '.gitignore', '.gitattributes', 'DEPLOY.md'}
-exclude_prefix = ('ltmp_',)
 exclude_ext = ('.sh', '.md')
 
 with zipfile.ZipFile('$OUTPUT', 'w', zipfile.ZIP_DEFLATED) as zf:
@@ -22,8 +21,6 @@ with zipfile.ZipFile('$OUTPUT', 'w', zipfile.ZIP_DEFLATED) as zf:
         dirs[:] = [d for d in dirs if d not in exclude and not d.startswith('.')]
         for f in files:
             if f in exclude:
-                continue
-            if any(f.startswith(p) for p in exclude_prefix):
                 continue
             if any(f.endswith(e) for e in exclude_ext):
                 continue
