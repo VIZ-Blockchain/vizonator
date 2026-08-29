@@ -46,7 +46,7 @@ function get_state(callback){
 	if(typeof callback === 'undefined'){callback=function(){};}
 	ext_browser.runtime.sendMessage({get_state:true},function(response){
 		console.log('get_state response',response);
-		if(null===response){
+		if(!response){
 			return;
 		}
 		if(false!==response.decoded){
@@ -108,7 +108,7 @@ function save_state(callback){
 
 	ext_browser.runtime.sendMessage({save_state:true,state:state},function(response){
 		console.log('save_state response',response);
-		if(null===response){
+		if(!response){
 			return;
 		}
 		callback();
