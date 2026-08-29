@@ -61,6 +61,10 @@ function get_state(callback){
 	ext_browser.runtime.sendMessage({get_state:true},function(response){
 		console.log('get_state response',response);
 		if(!response){
+			if(typeof localStorage['lang'] !== 'undefined'){
+				settings.lang=localStorage['lang'];
+			}
+			ltmp_arr=window['ltmp_'+settings.lang+'_arr'];
 			callback(false);
 			return;
 		}
