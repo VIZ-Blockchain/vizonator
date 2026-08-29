@@ -35,6 +35,8 @@ done
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+VERSION=$(grep '"version"' "$REPO_ROOT/manifest.json" | head -1 | sed 's/.*: *"\([^"]*\)".*/\1/')
+echo "Version: $VERSION"
 
 if [ -z "$ZIP_FILE" ]; then
   ZIP_FILE="/tmp/vizonator-$(date +%Y%m%d%H%M%S).xpi"
@@ -57,7 +59,7 @@ UPLOAD_RESP=$(curl -s -X POST \
   "${AMO_API}/addons/" \
   -H "Authorization: JWT ${JWT_TOKEN}" \
   -F "upload=@${ZIP_FILE}" \
-  -F "version=0.55" \
+  -F "version=${VERSION}" \
   -F "channel=${CHANNEL}")
 
 UPLOAD_UUID=$(echo "$UPLOAD_RESP" | grep -o '"uuid":"[^"]*"' | cut -d'"' -f4)
@@ -71,7 +73,7 @@ fi
 if [ "$PUBLISH" = true ]; then
   echo "Submitting for review..."
   REVIEW_RESP=$(curl -s -X PATCH \
-    "${AMO_API}/addons/addon/${ADDON_SLUG}/versions/0.55/" \
+    "${AMO_API}/addons/addon/${ADDON_SLUG}/versions/${VERSION}/" \
     -H "Authorization: JWT ${JWT_TOKEN}" \
     -H "Content-Type: application/json" \
     -d "{\"approved\": true}")

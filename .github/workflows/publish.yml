@@ -16,7 +16,7 @@ on:
         default: false
 
 jobs:
-  build-and-publish:
+  publish-chrome:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -34,6 +34,16 @@ jobs:
         run: |
           chmod +x bin/publish-chrome.sh
           ./bin/publish-chrome.sh --zip /tmp/vizonator.zip ${{ inputs.draft_chrome && '--draft' || '' }}
+
+  publish-firefox:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build ZIP
+        run: |
+          chmod +x bin/build-zip.sh
+          ./bin/build-zip.sh /tmp/vizonator.zip
 
       - name: Publish to Firefox AMO
         env:
