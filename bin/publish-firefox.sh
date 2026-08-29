@@ -56,7 +56,7 @@ JWT_TOKEN="${JWT_HEADER}.${JWT_PAYLOAD}.${JWT_SIG}"
 
 echo "Uploading to AMO..."
 UPLOAD_RESP=$(curl -s -X POST \
-  "${AMO_API}/addons/" \
+  "${AMO_API}/addons/addon/${ADDON_SLUG}/versions/" \
   -H "Authorization: JWT ${JWT_TOKEN}" \
   -F "upload=@${ZIP_FILE}" \
   -F "version=${VERSION}" \
@@ -71,13 +71,7 @@ if [ -z "$UPLOAD_UUID" ]; then
 fi
 
 if [ "$PUBLISH" = true ]; then
-  echo "Submitting for review..."
-  REVIEW_RESP=$(curl -s -X PATCH \
-    "${AMO_API}/addons/addon/${ADDON_SLUG}/versions/${VERSION}/" \
-    -H "Authorization: JWT ${JWT_TOKEN}" \
-    -H "Content-Type: application/json" \
-    -d "{\"approved\": true}")
-  echo "Review response: $REVIEW_RESP"
+  echo "Submitted for review (channel=${CHANNEL})."
 else
   echo "Uploaded as draft. Run without --draft to submit for review."
 fi
