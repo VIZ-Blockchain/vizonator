@@ -52,6 +52,15 @@ else{
 	}
 }
 
+/* MV3 service worker shim: viz.min.js references window/document which don't exist in SW.
+   Map them to self so the library can load. Only needed for Chrome (Firefox uses background page). */
+if(typeof window === 'undefined' && typeof self !== 'undefined'){
+	var window = self;
+}
+if(typeof document === 'undefined' && typeof self !== 'undefined'){
+	var document = self;
+}
+
 /* MV3: load scripts that were background.scripts[] in MV2.
    Chrome service worker: importScripts is available, call it.
    Firefox background page: importScripts is not defined, scripts loaded via manifest. */

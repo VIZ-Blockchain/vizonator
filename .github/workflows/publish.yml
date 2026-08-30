@@ -24,7 +24,7 @@ jobs:
       - name: Build ZIP
         run: |
           chmod +x bin/build-zip.sh
-          ./bin/build-zip.sh /tmp/vizonator.zip
+          ./bin/build-zip.sh chrome /tmp/vizonator-chrome.zip
 
       - name: Publish to Chrome Web Store
         env:
@@ -33,7 +33,7 @@ jobs:
           CHROME_REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
         run: |
           chmod +x bin/publish-chrome.sh
-          ./bin/publish-chrome.sh --zip /tmp/vizonator.zip ${{ inputs.draft_chrome && '--draft' || '' }}
+          ./bin/publish-chrome.sh --zip /tmp/vizonator-chrome.zip ${{ inputs.draft_chrome && '--draft' || '' }}
 
   publish-firefox:
     runs-on: ubuntu-latest
@@ -43,7 +43,7 @@ jobs:
       - name: Build ZIP
         run: |
           chmod +x bin/build-zip.sh
-          ./bin/build-zip.sh /tmp/vizonator.zip
+          ./bin/build-zip.sh firefox /tmp/vizonator-firefox.zip
 
       - name: Publish to Firefox AMO
         env:
@@ -51,4 +51,4 @@ jobs:
           FIREFOX_API_SECRET: ${{ secrets.FIREFOX_API_SECRET }}
         run: |
           chmod +x bin/publish-firefox.sh
-          ./bin/publish-firefox.sh --zip /tmp/vizonator.zip ${{ inputs.draft_firefox && '--draft' || '' }}
+          ./bin/publish-firefox.sh --zip /tmp/vizonator-firefox.zip ${{ inputs.draft_firefox && '--draft' || '' }}
