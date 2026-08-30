@@ -1,10 +1,8 @@
 'use strict';
-/* MV3: load scripts that were background.scripts[] in MV2 */
-importScripts('viz.min.js','ltmp_arr.js','ltmp_en.js','ltmp_ru.js');
-
 /* MV3: localStorage polyfill backed by chrome.storage.local.
    Service workers have no localStorage; we keep an in-memory cache
-   and sync writes to chrome.storage.local. */
+   and sync writes to chrome.storage.local.
+   IMPORTANT: Must be defined BEFORE importScripts() because viz.min.js uses localStorage. */
 var _lsCache={};
 var localStorage=new Proxy(_lsCache,{
 	get:function(target,prop){
@@ -33,6 +31,9 @@ function lsLoadAll(cb){
 		if(cb)cb();
 	});
 }
+
+/* MV3: load scripts that were background.scripts[] in MV2 */
+importScripts('viz.min.js','ltmp_arr.js','ltmp_en.js','ltmp_ru.js');
 
 /* Extensions state vars */
 var ext_browser;
@@ -1383,32 +1384,40 @@ function select_best_gate(){
 		let latency_start=new Date().getTime();
 		let latency=-1;
 
-		let xhr = new XMLHttpRequest();
-		xhr.overrideMimeType('text/plain');
-		xhr.open('POST',current_gate_url);
-		xhr.setRequestHeader('accept','application/json, text/plain, */*');
-		xhr.setRequestHeader('content-type','application/json');
-		xhr.onreadystatechange = function() {
-			if(4==xhr.readyState && 200==xhr.status){
-				latency=new Date().getTime() - latency_start;
+		fetch(current_gate_url,{
+			method:'POST',
+			headers:{
+				'accept':'application/json, text/plain, */*',
+				'content-type':'application/json'
+			},
+			body:'{"id":1,"method":"call","jsonrpc":"2.0","params":["database_api","get_dynamic_global_properties",[]]}'
+		})
+		.then(function(response){
+			if(response.ok){
+				latency=new Date().getTime()-latency_start;
 				console.log('check node',current_gate_url,'latency: ',latency);
-				if(best_gate!=current_gate){
-					if((best_gate_latency>latency)||(best_gate==-1)){
-						try{
-							let json=JSON.parse(xhr.response);
-							dgp=json.result;
-							best_gate=current_gate;
-							best_gate_latency=latency;
-							update_api_gate();
-						}
-						catch(e){
-							console.log('select_best_gate node error',current_gate_url,e);
-						}
+				return response.json();
+			}
+			throw new Error('HTTP '+response.status);
+		})
+		.then(function(json){
+			if(best_gate!=current_gate){
+				if((best_gate_latency>latency)||(best_gate==-1)){
+					try{
+						dgp=json.result;
+						best_gate=current_gate;
+						best_gate_latency=latency;
+						update_api_gate();
+					}
+					catch(e){
+						console.log('select_best_gate node error',current_gate_url,e);
 					}
 				}
 			}
-		}
-		xhr.send('{"id":1,"method":"call","jsonrpc":"2.0","params":["database_api","get_dynamic_global_properties",[]]}');
+		})
+		.catch(function(error){
+			console.log('select_best_gate fetch error',current_gate_url,error);
+		});
 	}
 }
 
