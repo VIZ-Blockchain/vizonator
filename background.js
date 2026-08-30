@@ -4,7 +4,7 @@
    and sync writes to chrome.storage.local.
    IMPORTANT: Must be defined BEFORE importScripts() because viz.min.js uses localStorage. */
 var _lsCache={};
-var localStorage=new Proxy(_lsCache,{
+var _localStorageProxy=new Proxy(_lsCache,{
 	get:function(target,prop){
 		if(prop==='getItem')return function(k){return target.hasOwnProperty(k)?target[k]:undefined;};
 		if(prop==='setItem')return function(k,v){target[k]=String(v);chrome.storage.local.set({[k]:String(v)});};
@@ -22,6 +22,13 @@ var localStorage=new Proxy(_lsCache,{
 		return true;
 	}
 });
+try{
+	Object.defineProperty(self,'localStorage',{value:_localStorageProxy,writable:true,configurable:true});
+}catch(e){
+	// Firefox: localStorage is a read-only getter in background context.
+	// Can't override it. Imported scripts will use Firefox's built-in localStorage.
+	// Our _lsCache + lsLoadAll still syncs state via chrome.storage.local.
+}
 function lsLoad(items){
 	for(var k in items){_lsCache[k]=items[k];}
 }
@@ -32,10 +39,7 @@ function lsLoadAll(cb){
 	});
 }
 
-/* MV3: load scripts that were background.scripts[] in MV2 */
-importScripts('viz.min.js','ltmp_arr.js','ltmp_en.js','ltmp_ru.js');
-
-/* Extensions state vars */
+/* MV3: detect browser API before importScripts so early listener works even if importScripts fails */
 var ext_browser;
 var ext_firefox=false;
 if(typeof chrome !== 'undefined'){
@@ -46,6 +50,38 @@ else{
 		ext_browser=browser;
 		ext_firefox=true;
 	}
+}
+
+/* MV3: load scripts that were background.scripts[] in MV2.
+   Chrome service worker: importScripts is available, call it.
+   Firefox background page: importScripts is not defined, scripts loaded via manifest. */
+var importScripts_error=null;
+if(typeof importScripts === 'function'){
+	try{
+		importScripts('viz.min.js','ltmp_arr.js','ltmp_en.js','ltmp_ru.js');
+	}catch(e){
+		importScripts_error=e.message||String(e);
+		console.error('importScripts failed:',importScripts_error);
+	}
+}
+
+/* MV3: load localStorage cache from chrome.storage.local before init */
+var bg_initialized=false;
+var pending_messages=[];
+
+/* Early message listener: respond to get_state even before full init.
+   Registered before importScripts result is needed, so Chrome MV3 always sees a listener. */
+if(typeof ext_browser !== 'undefined' && ext_browser.runtime && ext_browser.runtime.onMessage){
+	ext_browser.runtime.onMessage.addListener(function(request,sender,sendResponse){
+		if(!bg_initialized){
+			if(typeof request.get_state !== 'undefined'){
+				sendResponse({decoded:false,initializing:true,importScripts_error:importScripts_error});
+				return true;
+			}
+			pending_messages.push({request:request,sender:sender,sendResponse:sendResponse});
+			return true;
+		}
+	});
 }
 var extension_id = ext_browser.runtime.id;
 var current_user='';
@@ -403,7 +439,8 @@ var js_contentscript='contentscript.js';
 var api_http_gates=[
 	'https://api.viz.world/',
 	'https://node.viz.cx/',
-	'https://viz.lexai.host/',
+	'https://viz.lexai.top/',
+	'https://mirror.viz.world/',
 ];
 var social_gates=[
 	'social',
@@ -1518,25 +1555,6 @@ function check_viz_url(tab_id,url){
 					}
 				});
 			}
-		}
-	});
-}
-
-/* MV3: load localStorage cache from chrome.storage.local before init */
-var bg_initialized=false;
-var pending_messages=[];
-
-/* Early message listener: respond to get_state even before full init */
-if(typeof ext_browser !== 'undefined' && ext_browser.runtime && ext_browser.runtime.onMessage){
-	ext_browser.runtime.onMessage.addListener(function(request,sender,sendResponse){
-		if(!bg_initialized){
-			if(typeof request.get_state !== 'undefined'){
-				sendResponse({decoded:false,initializing:true});
-				return true;
-			}
-			// Queue other messages until initialized
-			pending_messages.push({request:request,sender:sender,sendResponse:sendResponse});
-			return true;
 		}
 	});
 }

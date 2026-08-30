@@ -263,7 +263,7 @@ var need_configure=function(){
 	$('.header-buttons').remove();
 	$('.header-account').remove();
 	$('.buttons').html('');
-	$('.info').html('<a class="options red" href="#">'+ltmp_arr.configure_account+'</a>');
+	$('.info').html('<a class="options red" href="#">'+ltmp_arr.configure_account+'</a><br><a href="https://start.viz.world" target="_blank" style="color:#4a9eff">'+ltmp_arr.create_account_link+'</a>');
 	$('.options').off('click',options);
 	$('.options').on('click',options);
 }
