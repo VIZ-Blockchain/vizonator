@@ -1515,6 +1515,7 @@ function check_viz_url(tab_id,url){
 
 /* MV3: load localStorage cache from chrome.storage.local before init */
 var bg_initialized=false;
+var pending_messages=[];
 
 /* Early message listener: respond to get_state even before full init */
 if(typeof ext_browser !== 'undefined' && ext_browser.runtime && ext_browser.runtime.onMessage){
@@ -1524,6 +1525,9 @@ if(typeof ext_browser !== 'undefined' && ext_browser.runtime && ext_browser.runt
 				sendResponse({decoded:false,initializing:true});
 				return true;
 			}
+			// Queue other messages until initialized
+			pending_messages.push({request:request,sender:sender,sendResponse:sendResponse});
+			return true;
 		}
 	});
 }
@@ -1540,27 +1544,26 @@ lsLoadAll(function(){
 			console.log('main init load_state',encode_status,state);
 			bg_initialized=true;
 			main_app();
+			// Process queued messages
+			while(pending_messages.length>0){
+				var item=pending_messages.shift();
+				handle_message(item.request,item.sender,item.sendResponse);
+			}
 		});
 	});
 });
 
-function main_app(){
-	select_best_gate();
-	ext_browser.action.setIcon({path:"images/gray128.png"});
-	ext_browser.action.setBadgeBackgroundColor({color:"rgba(136,136,136,0.4)"});
-	ext_browser.action.setBadgeText({text:"..."});
-	ext_browser.alarms.create('viz_timer',{when:Date.now()+1});
 
-	ext_browser.runtime.onMessage.addListener(function(request,sender,sendResponse){
-		console.log('onMessage',request);
-		let need_encode=false;
-		if(state.encoded){
-			if(!state.decoded){
-				need_encode=true;
-			}
+function handle_message(request,sender,sendResponse){
+	console.log('onMessage',request);
+	let need_encode=false;
+	if(state.encoded){
+		if(!state.decoded){
+			need_encode=true;
 		}
+	}
 
-		if(typeof request.encode_state !== 'undefined'){
+	if(typeof request.encode_state !== 'undefined'){
 			state.password=request.password;
 			load_state(state.password,function(encode_status){
 				sendResponse({status:encode_status});
@@ -2525,9 +2528,26 @@ function main_app(){
 			sendResponse({decoded:false});
 		}
 		return true;
+}
+
+function main_app(){
+	select_best_gate();
+	ext_browser.action.setIcon({path:"images/gray128.png"});
+	ext_browser.action.setBadgeBackgroundColor({color:"rgba(136,136,136,0.4)"});
+	ext_browser.action.setBadgeText({text:"..."});
+	ext_browser.alarms.create('viz_timer',{when:Date.now()+1});
+}
+
+/* MV3: All event listeners registered synchronously at top level */
+if(typeof ext_browser !== 'undefined'){
+	ext_browser.runtime.onMessage.addListener(function(request,sender,sendResponse){
+		if(!bg_initialized) return true;
+		handle_message(request,sender,sendResponse);
+		return true;
 	});
 
 	ext_browser.tabs.onActivated.addListener(function(active_info){
+		if(!bg_initialized) return;
 		console.log('onActivated',active_info);
 		ext_browser.tabs.get(active_info.tabId,function(tab){
 			if(ext_browser.runtime.lastError){
@@ -2540,6 +2560,7 @@ function main_app(){
 	});
 
 	ext_browser.tabs.onUpdated.addListener(function(tabId,change_info,tab){
+		if(!bg_initialized) return;
 		console.log('onUpdated',tabId,change_info,tab);
 		if(ext_browser.runtime.lastError){
 			console.log(ext_browser.runtime.lastError.message);
@@ -2588,6 +2609,7 @@ function main_app(){
 	});
 
 	ext_browser.alarms.onAlarm.addListener(function(alarm){
+		if(!bg_initialized) return;
 		if('viz_timer'==alarm.name){
 			viz_timer();
 		}
