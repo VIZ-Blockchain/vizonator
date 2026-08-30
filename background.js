@@ -435,6 +435,7 @@ var chrome_height_fix=0;
 
 var js_framework='cash.min.js';
 var js_contentscript='contentscript.js';
+var js_inpage='inpage.js';
 
 var api_http_gates=[
 	'https://api.viz.world/',
@@ -1552,6 +1553,14 @@ function check_viz_url(tab_id,url){
 					}
 					else{
 						console.log('contentscript injected');
+					}
+				});
+				ext_browser.scripting.executeScript({target:{tabId:tab.id},files:[js_inpage],world:'MAIN'},function(){
+					if(ext_browser.runtime.lastError){
+						console.log('inpage NOT injected',ext_browser.runtime.lastError.message);
+					}
+					else{
+						console.log('inpage injected (MAIN world)');
 					}
 				});
 			}

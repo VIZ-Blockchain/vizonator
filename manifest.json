@@ -1,6 +1,6 @@
 {
 	"name": "VIZonator",
-	"version": "0.67",
+	"version": "0.68",
 	"description": "VIZ Extension! Adds web3 provider to pages, available variable: vizonator.",
 	"permissions": ["alarms","activeTab","tabs","scripting","storage"],
 	"host_permissions": ["http://*/*","https://*/*"],
