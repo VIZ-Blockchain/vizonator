@@ -541,7 +541,7 @@ var delete_account_action=function(e){
 			delete localStorage['state'];
 
 			state={};
-			save_state(function(){
+			ext_browser.runtime.sendMessage({clear_state:true},function(){
 				ext_browser.runtime.sendMessage({reload_state:true});
 
 				close_modal_action();
@@ -1664,40 +1664,42 @@ var update_account_info=function(){
 		show_effective_shares=('true'==localStorage['show_effective_shares']);
 	}
 
-	if(typeof localStorage['current_energy'] !== 'undefined'){
-		current_energy=localStorage['current_energy'];
-	}
-	if(typeof localStorage['current_shares'] !== 'undefined'){
-		current_shares=localStorage['current_shares'];
-	}
-	if(typeof localStorage['current_income_shares'] !== 'undefined'){
-		current_income_shares=localStorage['current_income_shares'];
-	}
-	if(typeof localStorage['current_outcome_shares'] !== 'undefined'){
-		current_outcome_shares=localStorage['current_outcome_shares'];
-	}
-	if(typeof localStorage['current_effective_shares'] !== 'undefined'){
-		current_effective_shares=localStorage['current_effective_shares'];
-	}
-	if(typeof localStorage['current_balance'] !== 'undefined'){
-		current_balance=localStorage['current_balance'];
-	}
-	if(typeof localStorage['current_custom_sequence'] !== 'undefined'){
-		current_custom_sequence=parseInt(localStorage['current_custom_sequence']);
-	}
-
-	if(typeof localStorage['current_withdraw'] !== 'undefined'){
-		current_withdraw=parseInt(localStorage['current_withdraw']);
-	}
-	if(typeof localStorage['current_withdrawn'] !== 'undefined'){
-		current_withdrawn=parseInt(localStorage['current_withdrawn']);
-	}
-	if(typeof localStorage['current_withdraw_rate'] !== 'undefined'){
-		current_withdraw_rate=parseInt(localStorage['current_withdraw_rate']);
-	}
-	if(typeof localStorage['current_next_vesting_withdrawal'] !== 'undefined'){
-		current_next_vesting_withdrawal=parseInt(localStorage['current_next_vesting_withdrawal']);
-	}
+	ext_browser.runtime.sendMessage({get_account_info:true},function(response){
+		if(response){
+			if(typeof response.current_energy !== 'undefined'){
+				current_energy=response.current_energy;
+			}
+			if(typeof response.current_shares !== 'undefined'){
+				current_shares=response.current_shares;
+			}
+			if(typeof response.current_balance !== 'undefined'){
+				current_balance=response.current_balance;
+			}
+			if(typeof response.current_income_shares !== 'undefined'){
+				current_income_shares=response.current_income_shares;
+			}
+			if(typeof response.current_outcome_shares !== 'undefined'){
+				current_outcome_shares=response.current_outcome_shares;
+			}
+			if(typeof response.current_effective_shares !== 'undefined'){
+				current_effective_shares=response.current_effective_shares;
+			}
+			if(typeof response.current_custom_sequence !== 'undefined'){
+				current_custom_sequence=response.current_custom_sequence;
+			}
+			if(typeof response.current_withdraw !== 'undefined'){
+				current_withdraw=response.current_withdraw;
+			}
+			if(typeof response.current_withdrawn !== 'undefined'){
+				current_withdrawn=response.current_withdrawn;
+			}
+			if(typeof response.current_withdraw_rate !== 'undefined'){
+				current_withdraw_rate=response.current_withdraw_rate;
+			}
+			if(typeof response.current_next_vesting_withdrawal !== 'undefined'){
+				current_next_vesting_withdrawal=response.current_next_vesting_withdrawal;
+			}
+		}
 
 	let info_html='';
 	info_html+=`<div class="info-bar capital-caption">${ltmp_arr.capital_caption}: <span>`+(show_effective_shares?current_effective_shares:current_shares)+`</span> Ƶ <a class="unselectable swap-effective-capital-icon swap-effective-capital-action`+(show_effective_shares?' active':'')+`" title="${ltmp_arr.show_effective_capital}">${ltmp_icons.icon_swap}</a></div>`;
@@ -1746,6 +1748,7 @@ var update_account_info=function(){
 	$('.swap-effective-capital-action').on('click',swap_effective_capital);
 
 	update_account_info_timer=setTimeout(update_account_info,update_account_info_timeout);
+	});
 }
 
 var assigned_account=function(){

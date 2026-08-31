@@ -52,26 +52,176 @@ else{
 	}
 }
 
-/* MV3 service worker shim: viz.min.js references window/document which don't exist in SW.
-   Map them to self so the library can load. Only needed for Chrome (Firefox uses background page). */
-if(typeof window === 'undefined' && typeof self !== 'undefined'){
-	var window = self;
-}
-if(typeof document === 'undefined' && typeof self !== 'undefined'){
-	var document = self;
-}
-
 /* MV3: load scripts that were background.scripts[] in MV2.
    Chrome service worker: importScripts is available, call it.
-   Firefox background page: importScripts is not defined, scripts loaded via manifest. */
+   NOTE: viz.min.js is NOT loaded here — it requires DOM APIs.
+   In Chrome, it runs in an offscreen document (see setupOffscreen).
+   In Firefox, it loads via manifest background.scripts[]. */
 var importScripts_error=null;
 if(typeof importScripts === 'function'){
 	try{
-		importScripts('viz.min.js','ltmp_arr.js','ltmp_en.js','ltmp_ru.js');
+		importScripts('ltmp_arr.js','ltmp_en.js','ltmp_ru.js');
 	}catch(e){
 		importScripts_error=e.message||String(e);
 		console.error('importScripts failed:',importScripts_error);
 	}
+}
+
+/* MV3 offscreen document (Chrome only): viz.min.js requires DOM APIs.
+   In Chrome, we create an offscreen document that loads viz.min.js and handles RPC calls.
+   In Firefox, viz.min.js loads via manifest background.scripts[] (background page has DOM). */
+var use_offscreen = !ext_firefox && typeof chrome !== 'undefined' && typeof chrome.offscreen !== 'undefined';
+var offscreen_ready = false;
+var viz_call_queue = [];
+
+function vizCall(method, args, callback, sync) {
+	var msg = {type: 'viz_call', method: method, args: args || []};
+	if (sync) msg.sync = true;
+	if (!offscreen_ready) {
+		console.log('vizCall: queueing', method, 'offscreen not ready');
+		viz_call_queue.push({method: method, args: args, callback: callback, sync: sync});
+		return;
+	}
+	console.log('vizCall: sending', method, args);
+	chrome.runtime.sendMessage(msg, function(response) {
+		console.log('vizCall: response for', method, response);
+		if (callback) callback(response ? response.error : true, response ? response.result : undefined);
+	});
+}
+
+function flushVizQueue() {
+	while (viz_call_queue.length > 0) {
+		var item = viz_call_queue.shift();
+		vizCall(item.method, item.args, item.callback, item.sync);
+	}
+}
+
+function setupOffscreen() {
+	if (!use_offscreen) return;
+	chrome.offscreen.createDocument({
+		url: 'offscreen.html',
+		reasons: ['DOM_PARSER'],
+		justification: 'VIZ blockchain library requires DOM APIs'
+	}).then(function() {
+		console.log('offscreen document created');
+	}).catch(function(e) {
+		console.error('offscreen document error:', e);
+	});
+}
+
+if (use_offscreen) {
+	chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
+		if (msg.type === 'offscreen_ready') {
+			offscreen_ready = true;
+			console.log('offscreen viz ready, flushing queue');
+			flushVizQueue();
+		}
+	});
+	setupOffscreen();
+}
+
+/* Viz proxy: in Chrome, routes viz.* calls through offscreen document.
+   Uses dynamic proxy to automatically wrap ANY viz.* method. */
+if (use_offscreen) {
+	function createVizProxy(path) {
+		return new Proxy(function(){}, {
+			get: function(target, prop) {
+				if (prop === 'then' || prop === 'catch') return undefined;
+				return createVizProxy(path ? path + '.' + prop : prop);
+			},
+			apply: function(target, thisArg, args) {
+				var methodPath = path.indexOf('viz.') === 0 ? path.substring(4) : path;
+				var lastArg = args[args.length - 1];
+				var hasCallback = typeof lastArg === 'function';
+				var isSync = (methodPath === 'config.set' || methodPath.indexOf('auth.') === 0 || methodPath.indexOf('memo.') === 0);
+				
+				if (methodPath === 'config.set') {
+					vizCall(methodPath, args, null, true);
+					return;
+				}
+				
+				if (hasCallback) {
+					var callback = args.pop();
+					vizCall(methodPath, args, function(err, result) {
+						if (methodPath.indexOf('auth.signature.') === 0 || methodPath === 'auth.signTransaction') {
+							callback(result);
+						} else if (methodPath.indexOf('memo.') === 0) {
+							if (err) callback(null, err);
+							else callback(result);
+						} else if (methodPath === 'auth.isWif') {
+							callback(result);
+						} else {
+							callback(err, result);
+						}
+					}, isSync);
+				} else {
+					return new Promise(function(resolve, reject) {
+						vizCall(methodPath, args, function(err, result) {
+							if (err) reject(err);
+							else resolve(result);
+						}, isSync);
+					});
+				}
+			}
+		});
+	}
+	var viz = createVizProxy('viz');
+}
+
+/* Firefox compatibility: wrap sync viz methods to also accept callbacks.
+   This way calling code uses the same callback-based API in both Chrome and Firefox. */
+if (!use_offscreen && typeof viz !== 'undefined') {
+	var _orig_memo_encode = viz.memo.encode;
+	var _orig_memo_decode = viz.memo.decode;
+	var _orig_isWif = viz.auth.isWif;
+	var _orig_sign = viz.auth.signature.sign;
+	var _orig_recover = viz.auth.signature.recover;
+	var _orig_signTx = viz.auth.signTransaction;
+
+	viz.memo.encode = function(key1, key2, memo, callback) {
+		if (callback) {
+			try { var r = _orig_memo_encode.call(viz.memo, key1, key2, memo); callback(r); }
+			catch(e) { callback(null, e.message || String(e)); }
+		} else {
+			return _orig_memo_encode.call(viz.memo, key1, key2, memo);
+		}
+	};
+	viz.memo.decode = function(key, memo, callback) {
+		if (callback) {
+			try { var r = _orig_memo_decode.call(viz.memo, key, memo); callback(r); }
+			catch(e) { callback(null, e.message || String(e)); }
+		} else {
+			return _orig_memo_decode.call(viz.memo, key, memo);
+		}
+	};
+	viz.auth.isWif = function(key, callback) {
+		if (callback) {
+			callback(_orig_isWif.call(viz.auth, key));
+		} else {
+			return _orig_isWif.call(viz.auth, key);
+		}
+	};
+	viz.auth.signature.sign = function(data, key, callback) {
+		if (callback) {
+			callback(_orig_sign.call(viz.auth.signature, data, key).toHex());
+		} else {
+			return _orig_sign.call(viz.auth.signature, data, key);
+		}
+	};
+	viz.auth.signature.recover = function(data, sig, callback) {
+		if (callback) {
+			callback(_orig_recover.call(viz.auth.signature, data, sig).toPublicKeyString());
+		} else {
+			return _orig_recover.call(viz.auth.signature, data, sig);
+		}
+	};
+	viz.auth.signTransaction = function(tx, keys, callback) {
+		if (callback) {
+			callback(_orig_signTx.call(viz.auth, tx, keys));
+		} else {
+			return _orig_signTx.call(viz.auth, tx, keys);
+		}
+	};
 }
 
 /* MV3: load localStorage cache from chrome.storage.local before init */
@@ -500,16 +650,22 @@ function auth_signature_check(hex){
 	return false;
 }
 
-function passwordless_auth(private_key,account,domain,authority){
+function passwordless_auth(private_key,account,domain,authority,callback){
 	var nonce=0;
-	var data='';
-	var signature='';
-	while(!auth_signature_check(signature)){
-		data=domain+':auth:'+account+':'+authority+':'+(new Date().getTime() / 1000 | 0)+':'+nonce;
-		signature=viz.auth.signature.sign(data,private_key).toHex();
-		nonce++;
+	var timestamp=new Date().getTime() / 1000 | 0;
+	function trySign(){
+		var data=domain+':auth:'+account+':'+authority+':'+timestamp+':'+nonce;
+		viz.auth.signature.sign(data,private_key,function(signature){
+			if(auth_signature_check(signature)){
+				callback({account:account,data:data,signature:signature});
+			}
+			else{
+				nonce++;
+				trySign();
+			}
+		});
 	}
-	return {account,data,signature};
+	trySign();
 }
 
 function viz_timer(){
@@ -584,6 +740,40 @@ function viz_timer(){
 	ext_browser.alarms.create('viz_timer',{when:Date.now()+time_offset+(need_encode?time_offset:0)});
 }
 
+function doAwardBroadcast(encoded_memo,encrypt_memo,encrypt_memo_error,request,account,approximate_amount){
+	if(encrypt_memo_error){
+		ext_browser.tabs.get(request.tab_id,function(tab){
+			if(ext_browser.runtime.lastError){
+				console.log(ext_browser.runtime.lastError.message);
+			}
+			else{
+				ext_browser.tabs.sendMessage(request.tab_id,{id:request.id,status:false,error:'Memo encode error'});
+			}
+		});
+	}
+	else{
+		viz.broadcast.award(account.regular_key,current_user,request.login,parseInt(request.energy),parseInt(request.sequence),(encrypt_memo?encoded_memo:request.memo),request.beneficiaries,function(e,r){
+			console.log(e);
+			if(request.tab_id){
+				ext_browser.tabs.get(request.tab_id,function(tab){
+					if(ext_browser.runtime.lastError){
+						console.log(ext_browser.runtime.lastError.message);
+					}
+					else{
+						ext_browser.tabs.sendMessage(request.tab_id,{id:request.id,status:(!e),approximate_amount});
+						if(!e){
+							current_energy-=parseInt(request.energy);
+							localStorage['current_energy']=current_energy;
+							let new_energy=current_energy;
+							ext_browser.action.setBadgeText({text:''+parseInt(parseFloat(new_energy)/100)+'%'});
+						}
+					}
+				});
+			}
+		});
+	}
+}
+
 function vizonator_action(request){
 	console.log(request);
 
@@ -626,45 +816,18 @@ function vizonator_action(request){
 
 		let encoded_memo=request.memo;
 		if(encrypt_memo){
-			try{
-				encoded_memo=viz.memo.encode(account.memo_key,recipient_memo,'#'+request.memo);
-			}
-			catch(e){
-				encrypt_memo_error=true;
-			}
-		}
-		if(encrypt_memo_error){
-			ext_browser.tabs.get(request.tab_id,function(tab){
-				if(ext_browser.runtime.lastError){
-					console.log(ext_browser.runtime.lastError.message);
+			viz.memo.encode(account.memo_key,recipient_memo,'#'+request.memo,function(result,error){
+				if(error){
+					encrypt_memo_error=true;
 				}
 				else{
-					ext_browser.tabs.sendMessage(request.tab_id,{id:request.id,status:false,error:'Memo encode error'});
+					encoded_memo=result;
 				}
+				doAwardBroadcast(encoded_memo,encrypt_memo,encrypt_memo_error,request,account,approximate_amount);
 			});
+			return;
 		}
-		else{
-			viz.broadcast.award(account.regular_key,current_user,request.login,parseInt(request.energy),parseInt(request.sequence),(encrypt_memo?encoded_memo:request.memo),request.beneficiaries,function(e,r){
-				console.log(e);
-				if(request.tab_id){
-					ext_browser.tabs.get(request.tab_id,function(tab){
-						if(ext_browser.runtime.lastError){
-							console.log(ext_browser.runtime.lastError.message);
-						}
-						else{
-							ext_browser.tabs.sendMessage(request.tab_id,{id:request.id,status:(!e),approximate_amount});
-							if(!e){
-								current_energy-=parseInt(request.energy);
-								localStorage['current_energy']=current_energy;
-
-								let new_energy=current_energy;
-								ext_browser.action.setBadgeText({text:''+parseInt(parseFloat(new_energy)/100)+'%'});
-							}
-						}
-					});
-				}
-			});
-		}
+		doAwardBroadcast(encoded_memo,encrypt_memo,encrypt_memo_error,request,account,approximate_amount);
 	}
 	else
 	if(request.refuse){
@@ -729,40 +892,20 @@ function inpage_action(request){
 						operation_error='recipient_memo_error';
 					}
 					else{
-						try{
-							encoded_memo=viz.memo.encode(account.memo_key,recipient_memo,'#'+request.memo);
-						}
-						catch(e){
-							operation_error='encrypt_memo_error';
-						}
+						viz.memo.encode(account.memo_key,recipient_memo,'#'+request.memo,function(result,error){
+							if(error){
+								operation_error='encrypt_memo_error';
+							}
+							else{
+								encoded_memo=result;
+							}
+							doInpageAwardBroadcast(operation_error,encoded_memo,request,account,approximate_amount);
+						});
+						return;
 					}
 				}
 				if(false===operation_error){
-					viz.broadcast.award(account.regular_key,current_user,request.receiver,parseInt(request.energy),parseInt(request.custom_sequence),encoded_memo,request.beneficiaries,function(e,r){
-						console.log(e);
-						if(request.tab_id){
-							ext_browser.tabs.get(request.tab_id,function(tab){
-								if(ext_browser.runtime.lastError){
-									console.log(ext_browser.runtime.lastError.message);
-								}
-								else{
-									response_error=(!!e);
-									if(!response_error){
-										response_result={approximate_amount};
-									}
-									let response={'error':response_error,'result':response_result}
-									ext_browser.tabs.sendMessage(request.tab_id,{event:request.event,data:response});
-									if(!e){//manual update account energy
-										current_energy-=parseInt(request.energy);
-										localStorage['current_energy']=current_energy;
-
-										let new_energy=current_energy;
-										ext_browser.action.setBadgeText({text:''+parseInt(parseFloat(new_energy)/100)+'%'});
-									}
-								}
-							});
-						}
-					});
+					doInpageAwardBroadcast(operation_error,encoded_memo,request,account,approximate_amount);
 				}
 			}
 			else{
@@ -801,41 +944,39 @@ function inpage_action(request){
 						operation_error='recipient_memo_error';
 					}
 					else{
-						try{
-							encoded_memo=viz.memo.encode(account.memo_key,recipient_memo,'#'+request.memo);
-						}
-						catch(e){
-							operation_error='encrypt_memo_error';
-						}
+						viz.memo.encode(account.memo_key,recipient_memo,'#'+request.memo,function(result,error){
+							if(error) operation_error='encrypt_memo_error';
+							else encoded_memo=result;
+							if(false===operation_error){
+								viz.broadcast.fixedAward(account.regular_key,current_user,request.receiver,request.reward_amount,parseInt(request.max_energy),parseInt(request.custom_sequence),encoded_memo,request.beneficiaries,function(e,r){
+									console.log(e);
+									if(request.tab_id){
+										ext_browser.tabs.get(request.tab_id,function(tab){
+											if(ext_browser.runtime.lastError){
+												console.log(ext_browser.runtime.lastError.message);
+											}
+											else{
+												response_error=(!!e);
+												if(!response_error){
+													response_result={approximate_amount:parseFloat(request.reward_amount)};
+												}
+												let response={'error':response_error,'result':response_result}
+												ext_browser.tabs.sendMessage(request.tab_id,{event:request.event,data:response});
+												if(!e){
+													current_energy-=parseInt(approximate_energy);
+													localStorage['current_energy']=current_energy;
+													let new_energy=current_energy;
+													ext_browser.action.setBadgeText({text:''+parseInt(parseFloat(new_energy)/100)+'%'});
+												}
+											}
+										});
+									}
+								});
+							}
+						});
+						return;
 					}
-				}
-				if(false===operation_error){
-					viz.broadcast.fixedAward(account.regular_key,current_user,request.receiver,request.reward_amount,parseInt(request.max_energy),parseInt(request.custom_sequence),encoded_memo,request.beneficiaries,function(e,r){
-						console.log(e);
-						if(request.tab_id){
-							ext_browser.tabs.get(request.tab_id,function(tab){
-								if(ext_browser.runtime.lastError){
-									console.log(ext_browser.runtime.lastError.message);
-								}
-								else{
-									response_error=(!!e);
-									if(!response_error){
-										response_result={approximate_amount:parseFloat(request.reward_amount)};
-									}
-									let response={'error':response_error,'result':response_result}
-									ext_browser.tabs.sendMessage(request.tab_id,{event:request.event,data:response});
-									if(!e){//manual update account energy
-										current_energy-=parseInt(approximate_energy);
-										localStorage['current_energy']=current_energy;
-
-										let new_energy=current_energy;
-										ext_browser.action.setBadgeText({text:''+parseInt(parseFloat(new_energy)/100)+'%'});
-									}
-								}
-							});
-						}
-					});
-				}
+			}
 			}
 			else{
 				operation_error='recipient_error';
@@ -865,34 +1006,33 @@ function inpage_action(request){
 						operation_error='recipient_memo_error';
 					}
 					else{
-						try{
-							encoded_memo=viz.memo.encode(account.memo_key,recipient_memo,'#'+request.memo);
-						}
-						catch(e){
-							operation_error='encrypt_memo_error';
-						}
-					}
-				}
-				if(false===operation_error){
-					viz.broadcast.transfer(account.active_key,current_user,request.to,request.amount,encoded_memo,function(e,r){
-						console.log(e);
-						if(request.tab_id){
-							ext_browser.tabs.get(request.tab_id,function(tab){
-								if(ext_browser.runtime.lastError){
-									console.log(ext_browser.runtime.lastError.message);
-								}
-								else{
-									response_error=(!!e);
-									if(!response_error){
-										response_result={};
+						viz.memo.encode(account.memo_key,recipient_memo,'#'+request.memo,function(result,error){
+							if(error) operation_error='encrypt_memo_error';
+							else encoded_memo=result;
+							if(false===operation_error){
+								viz.broadcast.transfer(account.active_key,current_user,request.to,request.amount,encoded_memo,function(e,r){
+									console.log(e);
+									if(request.tab_id){
+										ext_browser.tabs.get(request.tab_id,function(tab){
+											if(ext_browser.runtime.lastError){
+												console.log(ext_browser.runtime.lastError.message);
+											}
+											else{
+												response_error=(!!e);
+												if(!response_error){
+													response_result={};
+												}
+												let response={'error':response_error,'result':response_result}
+												ext_browser.tabs.sendMessage(request.tab_id,{event:request.event,data:response});
+											}
+										});
 									}
-									let response={'error':response_error,'result':response_result}
-									ext_browser.tabs.sendMessage(request.tab_id,{event:request.event,data:response});
-								}
-							});
-						}
-					});
-				}
+								});
+							}
+						});
+						return;
+					}
+			}
 			}
 			else{
 				operation_error='recipient_error';
@@ -1151,9 +1291,11 @@ function inpage_action(request){
 				}
 				else{
 					response_error=false;
-					response_result=passwordless_auth(private_key,current_user,request.origin,request.authority);
-					let response={'error':response_error,'result':response_result}
-					ext_browser.tabs.sendMessage(request.tab_id,{event:request.event,data:response});
+					passwordless_auth(private_key,current_user,request.origin,request.authority,function(result){
+						response_result=result;
+						let response={'error':response_error,'result':response_result}
+						ext_browser.tabs.sendMessage(request.tab_id,{event:request.event,data:response});
+					});
 				}
 			});
 		}
@@ -1193,16 +1335,18 @@ function inpage_action(request){
 				}
 				else{
 					let data_to_sign=request.data_to_sign;
-					let signature=viz.auth.signature.sign(data_to_sign,private_key).toHex();
-					let public_key=viz.auth.signature.recover(data_to_sign,signature).toPublicKeyString();
-					response_error=false;
-					response_result={
-						account:current_user,
-						signature:signature,
-						public_key:public_key
-					};
-					let response={'error':response_error,'result':response_result}
-					ext_browser.tabs.sendMessage(request.tab_id,{event:request.event,data:response});
+					viz.auth.signature.sign(data_to_sign,private_key,function(signature){
+						viz.auth.signature.recover(data_to_sign,signature,function(public_key){
+							response_error=false;
+							response_result={
+								account:current_user,
+								signature:signature,
+								public_key:public_key
+							};
+							let response={'error':response_error,'result':response_result}
+							ext_browser.tabs.sendMessage(request.tab_id,{event:request.event,data:response});
+						});
+					});
 				}
 			});
 		}
@@ -1364,52 +1508,66 @@ function inpage_action(request){
 						active_key=active_key.trim();
 					}
 
-					regular_valid=viz.auth.isWif(regular_key);
-					if(''==memo_key || false===memo_key){
-						memo_valid=true;
-					}
-					else{
-						memo_valid=viz.auth.isWif(memo_key);
-					}
-					if(''==active_key || false===active_key){
-						active_valid=true;
-					}
-					else{
-						active_valid=viz.auth.isWif(active_key);
-					}
-
-					//fix if only active key is provided
-					if(!regular_valid){
-						if(active_valid){
-							regular_valid=true;
-							regular_key=active_key;
+					viz.auth.isWif(regular_key,function(regular_valid){
+						function checkMemoAndActive(){
+							if(''==memo_key || false===memo_key){
+								var memo_valid=true;
+								checkActive(regular_valid,memo_valid,active_key,regular_key,memo_key);
+							}
+							else{
+								viz.auth.isWif(memo_key,function(memo_valid){
+									checkActive(regular_valid,memo_valid,active_key,regular_key,memo_key);
+								});
+							}
 						}
-					}
-
-					if(regular_valid && memo_valid && active_valid){
-						current_user=new_user;
-						state.current_user=current_user;
-						users[current_user]={'regular_key':regular_key,'memo_key':memo_key,'active_key':active_key};
-
-						save_state(function(){
-							let response={
-								'error':false,
-								'result':true
-							};
-							ext_browser.tabs.sendMessage(request.tab_id,{event:request.event,data:response});
-						});
-					}
-					else{
-						let response={
-							'error':'invalid keys',
-							'result':false
-						};
-						ext_browser.tabs.sendMessage(request.tab_id,{event:request.event,data:response});
-					}
+						function checkActive(regular_valid,memo_valid,active_key,regular_key,memo_key){
+							if(''==active_key || false===active_key){
+								var active_valid=true;
+								finishImport(regular_valid,memo_valid,active_valid,active_key,regular_key,memo_key,new_user,request.tab_id);
+							}
+							else{
+								viz.auth.isWif(active_key,function(active_valid){
+									finishImport(regular_valid,memo_valid,active_valid,active_key,regular_key,memo_key,new_user,request.tab_id);
+								});
+							}
+						}
+						checkMemoAndActive();
+					});
 
 				}
 			});
 		}
+	}
+}
+
+function finishImport(regular_valid,memo_valid,active_valid,active_key,regular_key,memo_key,new_user,tab_id){
+	//fix if only active key is provided
+	if(!regular_valid){
+		if(active_valid){
+			regular_valid=true;
+			regular_key=active_key;
+		}
+	}
+
+	if(regular_valid && memo_valid && active_valid){
+		current_user=new_user;
+		state.current_user=current_user;
+		users[current_user]={'regular_key':regular_key,'memo_key':memo_key,'active_key':active_key};
+
+		save_state(function(){
+			let response={
+				'error':false,
+				'result':true
+			};
+			ext_browser.tabs.sendMessage(tab_id,{event:'import_account',data:response});
+		});
+	}
+	else{
+		let response={
+			'error':'invalid keys',
+			'result':false
+		};
+		ext_browser.tabs.sendMessage(tab_id,{event:'import_account',data:response});
 	}
 }
 
@@ -1612,6 +1770,35 @@ function handle_message(request,sender,sendResponse){
 			state.password=request.password;
 			load_state(state.password,function(encode_status){
 				sendResponse({status:encode_status});
+			});
+		}
+		else
+		if(typeof request.clear_state !== 'undefined'){
+			delete localStorage['state'];
+			state={};
+			state.encoded=false;
+			state.decoded=false;
+			state.password='';
+			state.users={};
+			state.current_user='';
+			state.settings={lang:'en',dark:false};
+			state.rules={};
+			sendResponse({status:'cleared'});
+		}
+		else
+		if(typeof request.get_account_info !== 'undefined'){
+			sendResponse({
+				current_energy: current_energy,
+				current_shares: current_shares,
+				current_balance: current_balance,
+				current_income_shares: typeof current_income_shares !== 'undefined' ? current_income_shares : 0,
+				current_outcome_shares: typeof current_outcome_shares !== 'undefined' ? current_outcome_shares : 0,
+				current_effective_shares: typeof current_effective_shares !== 'undefined' ? current_effective_shares : 0,
+				current_custom_sequence: typeof current_custom_sequence !== 'undefined' ? current_custom_sequence : 0,
+				current_withdraw: typeof current_withdraw !== 'undefined' ? current_withdraw : 0,
+				current_withdrawn: typeof current_withdrawn !== 'undefined' ? current_withdrawn : 0,
+				current_withdraw_rate: typeof current_withdraw_rate !== 'undefined' ? current_withdraw_rate : 0,
+				current_next_vesting_withdrawal: typeof current_next_vesting_withdrawal !== 'undefined' ? current_next_vesting_withdrawal : 0
 			});
 		}
 		else
@@ -1839,32 +2026,30 @@ function handle_message(request,sender,sendResponse){
 										operation_error='recipient_memo_error';
 									}
 									else{
-										try{
-											encoded_memo=viz.memo.encode(account.memo_key,recipient_memo,'#'+request.memo);
-										}
-										catch(e){
-											operation_error='encrypt_memo_error';
-										}
+										viz.memo.encode(account.memo_key,recipient_memo,'#'+request.memo,function(result,error){
+											if(error) operation_error='encrypt_memo_error';
+											else encoded_memo=result;
+											if(false===operation_error){
+												viz.broadcast.award(account.regular_key,current_user,request.receiver,parseInt(request.energy),parseInt(request.custom_sequence),encoded_memo,request.beneficiaries,function(e,r){
+													console.log(e);
+													response_error=(!!e);
+													if(!response_error){
+														response_result={approximate_amount};
+													}
+													let response={'error':response_error,'result':response_result}
+													sendResponse(response);
+													if(!e){
+														current_energy-=parseInt(request.energy);
+														localStorage['current_energy']=current_energy;
+														let new_energy=current_energy;
+														ext_browser.action.setBadgeText({text:''+parseInt(parseFloat(new_energy)/100)+'%'});
+													}
+												});
+											}
+										});
+										return;
 									}
-								}
-								if(false===operation_error){
-									viz.broadcast.award(account.regular_key,current_user,request.receiver,parseInt(request.energy),parseInt(request.custom_sequence),encoded_memo,request.beneficiaries,function(e,r){
-										console.log(e);
-										response_error=(!!e);
-										if(!response_error){
-											response_result={approximate_amount};
-										}
-										let response={'error':response_error,'result':response_result}
-										sendResponse(response);
-										if(!e){//manual update account energy
-											current_energy-=parseInt(request.energy);
-											localStorage['current_energy']=current_energy;
-
-											let new_energy=current_energy;
-											ext_browser.action.setBadgeText({text:''+parseInt(parseFloat(new_energy)/100)+'%'});
-										}
-									});
-								}
+							}
 							}
 							else{
 								operation_error='default_recipient_error';
@@ -1894,32 +2079,29 @@ function handle_message(request,sender,sendResponse){
 										operation_error='recipient_memo_error';
 									}
 									else{
-										try{
-											encoded_memo=viz.memo.encode(account.memo_key,recipient_memo,'#'+request.memo);
-										}
-										catch(e){
-											operation_error='encrypt_memo_error';
-										}
+										viz.memo.encode(account.memo_key,recipient_memo,'#'+request.memo,function(result,error){
+											if(error) operation_error='encrypt_memo_error';
+											else encoded_memo=result;
+											if(false===operation_error){
+												viz.broadcast.fixedAward(account.regular_key,current_user,request.receiver,request.reward_amount,parseInt(request.max_energy),parseInt(request.custom_sequence),encoded_memo,request.beneficiaries,function(e,r){
+													console.log(e);
+													response_error=(!!e);
+													if(!response_error){
+														response_result={approximate_amount};
+													}
+													let response={'error':response_error,'result':response_result}
+													sendResponse(response);
+													if(!e){
+														current_energy-=parseInt(approximate_energy);
+														localStorage['current_energy']=current_energy;
+														let new_energy=current_energy;
+														ext_browser.action.setBadgeText({text:''+parseInt(parseFloat(new_energy)/100)+'%'});
+													}
+												});
+											}
+										});
+										return;
 									}
-								}
-								if(false===operation_error){
-									viz.broadcast.fixedAward(account.regular_key,current_user,request.receiver,request.reward_amount,parseInt(request.max_energy),parseInt(request.custom_sequence),encoded_memo,request.beneficiaries,function(e,r){
-										console.log(e);
-										response_error=(!!e);
-										if(!response_error){
-											response_result={approximate_amount};
-										}
-										let response={'error':response_error,'result':response_result}
-										sendResponse(response);
-										if(!e){//manual update account energy
-											current_energy-=parseInt(approximate_energy);
-											localStorage['current_energy']=current_energy;
-
-											let new_energy=current_energy;
-											ext_browser.action.setBadgeText({text:''+parseInt(parseFloat(new_energy)/100)+'%'});
-										}
-									});
-								}
 							}
 							else{
 								operation_error='default_recipient_error';
@@ -1928,6 +2110,7 @@ function handle_message(request,sender,sendResponse){
 								let response={'error':operation_error,'result':response_result}
 								sendResponse(response);
 							}
+						}
 						});
 					}
 					if('transfer'==request.operation){
@@ -1941,29 +2124,27 @@ function handle_message(request,sender,sendResponse){
 										operation_error='recipient_memo_error';
 									}
 									else{
-										try{
-											encoded_memo=viz.memo.encode(account.memo_key,recipient_memo,'#'+request.memo);
-										}
-										catch(e){
-											operation_error='encrypt_memo_error';
-										}
+										viz.memo.encode(account.memo_key,recipient_memo,'#'+request.memo,function(result,error){
+											if(error) operation_error='encrypt_memo_error';
+											else encoded_memo=result;
+											if(false===operation_error){
+												viz.broadcast.transfer(account.active_key,current_user,request.to,request.amount,encoded_memo,function(e,r){
+													console.log(e);
+													response_error=(!!e);
+													if(!response_error){
+														response_result={};
+													}
+													let response={'error':response_error,'result':response_result}
+													sendResponse(response);
+													if(!e){
+														current_balance=parseFloat(current_balance)-parseFloat(request.amount).toFixed(3);
+														localStorage['current_balance']=current_balance;
+													}
+												});
+											}
+										});
+										return;
 									}
-								}
-								if(false===operation_error){
-									viz.broadcast.transfer(account.active_key,current_user,request.to,request.amount,encoded_memo,function(e,r){
-										console.log(e);
-										response_error=(!!e);
-										if(!response_error){
-											response_result={};
-										}
-										let response={'error':response_error,'result':response_result}
-										sendResponse(response);
-										if(!e){//manual update account energy
-											current_balance=parseFloat(current_balance)-parseFloat(request.amount).toFixed(3);
-											localStorage['current_balance']=current_balance;
-										}
-									});
-								}
 							}
 							else{
 								operation_error='default_recipient_error';
@@ -1972,6 +2153,7 @@ function handle_message(request,sender,sendResponse){
 								let response={'error':operation_error,'result':response_result}
 								sendResponse(response);
 							}
+						}
 						});
 					}
 					if('transfer_to_vesting'==request.operation){
@@ -2069,14 +2251,11 @@ function handle_message(request,sender,sendResponse){
 							error=true;
 						}
 						else{
-							try{
-								decoded_memo=viz.memo.decode(users[current_user].memo_key,request.memo);
-							}
-							catch(e){
-								error=true;
-							}
+							viz.memo.decode(users[current_user].memo_key,request.memo,function(result,error){
+								if(error) sendResponse({'error':true,'result':''});
+								else sendResponse({'error':false,'result':result});
+							});
 						}
-						sendResponse({'error':error,'result':decoded_memo});
 					}
 					if('publish_voice'==request.operation){
 						viz.api.getAccount(current_user,'V',function(err,response){
@@ -2102,18 +2281,19 @@ function handle_message(request,sender,sendResponse){
 								],'extensions':[]};
 
 								viz.broadcast._prepareTransaction(raw_tx).then((prepaired_tx)=>{
-									let signed_tx=viz.auth.signTransaction(prepaired_tx,[account.regular_key]);
-									viz.api.broadcastTransactionSynchronous(signed_tx,function(e,r){
-										console.log(e);
-										response_error=(!!e);
-										if(!response_error){
-											response_result=r;//id:string:tx hash, block_num:int, trx_num:int, expired:bool
-										}
-										let response={'error':response_error,'result':response_result}
-										sendResponse(response);
-										if(!e){//manual update account
-											ext_browser.alarms.create('viz_timer',{when:Date.now()+5});
-										}
+									viz.auth.signTransaction(prepaired_tx,[account.regular_key],function(signed_tx){
+										viz.api.broadcastTransactionSynchronous(signed_tx,function(e,r){
+											console.log(e);
+											response_error=(!!e);
+											if(!response_error){
+												response_result=r;
+											}
+											let response={'error':response_error,'result':response_result}
+											sendResponse(response);
+											if(!e){
+												ext_browser.alarms.create('viz_timer',{when:Date.now()+5});
+											}
+										});
 									});
 								});
 								/*
