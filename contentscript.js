@@ -515,6 +515,84 @@ document.addEventListener('vizonator',function(event){
 		}
 	}
 	else
+	if('encrypt'==data_obj.action || 'decrypt'==data_obj.action){
+		/* memo-key encryption. Shape is checked here so a malformed call gets a code
+		   straight away instead of an approval window for something unusable.
+		   MEMO_MAX_CHARS is the announced limit: a message travels page → content script
+		   → background as one structured-clone message, and the page is told the number
+		   so it can split on its side rather than get a silently truncated letter. */
+		const MEMO_MAX_CHARS=8*1024*1024;
+		let request_error=false;
+		let key_type=(typeof data.key=='undefined')?'memo':data.key;
+		if('memo'!=key_type){
+			request_error='bad_key_type';
+		}
+		let items=false;
+		if(!request_error&&'decrypt'==data_obj.action){
+			if(typeof data.items!='undefined'){
+				if(!Array.isArray(data.items)){
+					request_error='bad_ciphertext';
+				}
+				else{
+					items=data.items;
+				}
+			}
+			else{
+				items=[{id:null,from:data.from,ct:data.ct,iv:data.iv,single:true}];
+			}
+			if(!request_error){
+				let total=0;
+				for(let i in items){
+					let item=items[i];
+					if(!item||typeof item.from!='string'||typeof item.ct!='string'||typeof item.iv!='string'){
+						/* a whole batch built wrong is a call error; a single unreadable
+						   line inside a well-formed batch is not — that one is reported
+						   per item by the background */
+						request_error='bad_ciphertext';
+						break;
+					}
+					total+=item.ct.length;
+				}
+				if(!request_error&&total>MEMO_MAX_CHARS){
+					request_error='too_large: '+MEMO_MAX_CHARS+' characters per call';
+				}
+			}
+		}
+		if(!request_error&&'encrypt'==data_obj.action){
+			if(typeof data.to!='string'||''==data.to){
+				request_error='bad_public_key';
+			}
+			else
+			if(typeof data.message!='string'){
+				request_error='bad_ciphertext';
+			}
+			else
+			if(data.message.length>MEMO_MAX_CHARS){
+				request_error='too_large: '+MEMO_MAX_CHARS+' characters per call';
+			}
+		}
+		if(request_error){
+			document.dispatchEvent(new CustomEvent('vizonator_'+data_obj.event,{detail:JSON.stringify({'error':request_error,'result':result})}));
+		}
+		else{
+			ext_browser.runtime.sendMessage({
+				inpage:true,
+				operation:data_obj.action,
+				/* encrypt and decrypt are approved separately on purpose: writing a
+				   letter and reading somebody's letters are different permissions */
+				operation_type:['memo_crypto',data_obj.action,'memo'],
+				event:data_obj.event,
+
+				account:(typeof data.account=='string'?data.account:false),
+				to:('encrypt'==data_obj.action?data.to:false),
+				message:('encrypt'==data_obj.action?data.message:false),
+				items:items,
+
+				action_top,action_left,action_width,action_height
+			});
+		}
+	}
+	else
 	if(typeof VIZ_PM_OPS !== 'undefined' && typeof VIZ_PM_OPS.ops[data_obj.action] !== 'undefined'){
 		/* prediction-market operations share one branch: the payload is validated
 		   against the shared table here so the page gets a straight answer instead of

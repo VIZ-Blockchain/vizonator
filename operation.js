@@ -391,6 +391,12 @@ function action_info(){
 		if('sign_data'==action.operation){
 			operation_str=ltmp_arr.operations_caption.sign_data;
 		}
+		if('encrypt'==action.operation){
+			operation_str=ltmp_arr.operations_caption.encrypt;
+		}
+		if('decrypt'==action.operation){
+			operation_str=ltmp_arr.operations_caption.decrypt;
+		}
 		if(typeof VIZ_PM_OPS !== 'undefined' && typeof VIZ_PM_OPS.ops[action.operation] !== 'undefined'){
 			if(typeof ltmp_arr.operations_caption[action.operation] !== 'undefined'){
 				operation_str=ltmp_arr.operations_caption[action.operation];
@@ -580,6 +586,32 @@ function action_info(){
 					display_data=display_data.substring(0,200)+'...';
 				}
 				result+='<p>Data:</p><span class="gray monospace limit-height">'+escape_html(display_data)+'</span>';
+			}
+			result+='</div>';
+		}
+		if('encrypt'==action.operation||'decrypt'==action.operation){
+			/* memo-key encryption: show what is actually at stake — which key, whose
+			   public key on the other side, and how much text goes through. Nothing is
+			   broadcast, so there is no amount to highlight. */
+			result+='<p class="caption">'+operation_str+'</p>';
+			result+='<p class="orange">'+ltmp_arr.origin_caption+': '+action.origin+'</p>';
+			result+='<p>'+ltmp_arr.authority_caption+': <span class="monospace">memo</span></p>';
+			if('encrypt'==action.operation){
+				result+='<p>'+ltmp_arr.memo_recipient_caption+':</p><span class="gray monospace limit-height">'+escape_html(String(action.to))+'</span>';
+				let message=String(action.message||'');
+				let preview=(message.length>200)?(message.substring(0,200)+'...'):message;
+				result+='<p>'+ltmp_arr.memo_caption+' ('+message.length+'):</p><span class="gray monospace limit-height">'+escape_html(preview)+'</span>';
+			}
+			else{
+				let items=action.items||[];
+				result+='<p>'+ltmp_arr.memo_letters_caption+': '+items.length+'</p>';
+				let senders=[];
+				for(let i in items){
+					if(senders.length<3&&senders.indexOf(items[i].from)<0){
+						senders.push(items[i].from);
+					}
+				}
+				result+='<span class="gray monospace limit-height">'+escape_html(senders.join('\n'))+(items.length>senders.length?'\n…':'')+'</span>';
 			}
 			result+='</div>';
 		}

@@ -157,6 +157,8 @@ var ltmp_en_arr={
 	save_rule_caption:'Remember',
 
 	memo_caption:'Memo',
+	memo_recipient_caption:'Recipient public key',
+	memo_letters_caption:'Messages to decrypt',
 	encode_memo_caption:'Encode memo',
 	sequence_caption:'Sequence',
 	beneficiaries_caption:'Beneficiaries',
@@ -192,6 +194,8 @@ var ltmp_en_arr={
 		get_current_account_history:'Get account history',
 		passwordless_auth:'Passwordless authentification',
 		sign_data:'Sign data',
+		encrypt:'Encrypt a message with the memo key',
+		decrypt:'Decrypt messages with the memo key',
 
 		pm_oracle_register:'Register oracle',
 		pm_oracle_update:'Update oracle',

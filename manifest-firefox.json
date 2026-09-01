@@ -5,7 +5,7 @@
 	"permissions": ["alarms","activeTab","tabs","scripting","storage"],
 	"host_permissions": ["http://*/*","https://*/*"],
 	"background": {
-		"scripts": ["viz.min.js","ltmp_arr.js","ltmp_en.js","ltmp_ru.js","pm_ops.js","background.js"]
+		"scripts": ["viz.min.js","ltmp_arr.js","ltmp_en.js","ltmp_ru.js","pm_ops.js","secp256k1.js","memo_crypto.js","background.js"]
 	},
 	"options_ui": {
 		"page": "options.html",

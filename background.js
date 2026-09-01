@@ -60,7 +60,9 @@ else{
 var importScripts_error=null;
 if(typeof importScripts === 'function'){
 	try{
-		importScripts('ltmp_arr.js','ltmp_en.js','ltmp_ru.js','pm_ops.js');
+		/* secp256k1.js + memo_crypto.js are pure computation (no DOM), so unlike
+		   viz.min.js they live in the worker itself — encrypt/decrypt never leaves it */
+		importScripts('ltmp_arr.js','ltmp_en.js','ltmp_ru.js','pm_ops.js','secp256k1.js','memo_crypto.js');
 	}catch(e){
 		importScripts_error=e.message||String(e);
 		console.error('importScripts failed:',importScripts_error);
@@ -1475,6 +1477,83 @@ function inpage_action(request){
 		}
 	}
 	else
+	if('encrypt'==request.operation||'decrypt'==request.operation){
+		/* memo-key encryption (VIZ Hub letters). Everything here happens offline: no
+		   transaction is built, nothing is broadcast, and the memo key never leaves the
+		   worker — the page only ever sees ciphertext or plaintext. */
+		let send=function(error,result){
+			if(!request.tab_id){
+				return;
+			}
+			ext_browser.tabs.get(request.tab_id,function(tab){
+				if(ext_browser.runtime.lastError){
+					console.log(ext_browser.runtime.lastError.message);
+				}
+				else{
+					ext_browser.tabs.sendMessage(request.tab_id,{event:request.event,data:{'error':error,'result':result}});
+				}
+			});
+		};
+		/* the account is taken from the session, never from the page; naming a different
+		   one is refused instead of silently answering for the current user */
+		if(request.account&&request.account!=current_user){
+			send('unknown_account',false);
+		}
+		else
+		if(typeof VizMemoCrypto=='undefined'){
+			send('no_memo_key',false);
+		}
+		else
+		if(typeof account.memo_key=='undefined'||''==account.memo_key){
+			send('no_memo_key',false);
+		}
+		else
+		if('encrypt'==request.operation){
+			VizMemoCrypto.encrypt(account.memo_key,request.to,request.message).then(function(result){
+				send(false,{success:true,result:result});
+			},function(e){
+				send(e.code||'auth_failed',false);
+			});
+		}
+		else{
+			/* one unreadable letter is a normal state of a mailbox, not a failed call:
+			   every item is answered on its own and the rest of the batch survives */
+			let items=request.items||[];
+			let single=(1==items.length&&items[0].single);
+			let answers=[];
+			let step=function(index){
+				if(index>=items.length){
+					if(single){
+						if(answers[0]&&answers[0].ok){
+							send(false,{success:true,result:answers[0].message});
+						}
+						else{
+							send(answers[0]?answers[0].error:'bad_ciphertext',false);
+						}
+					}
+					else{
+						send(false,{success:true,result:answers});
+					}
+					return;
+				}
+				let item=items[index];
+				VizMemoCrypto.decrypt(account.memo_key,item.from,item.ct,item.iv).then(function(message){
+					answers.push({id:(typeof item.id=='undefined'?null:item.id),ok:true,message:message});
+					step(index+1);
+				},function(e){
+					if('no_memo_key'==e.code){
+						/* not a property of this letter — the whole call is doomed */
+						send('no_memo_key',false);
+						return;
+					}
+					answers.push({id:(typeof item.id=='undefined'?null:item.id),ok:false,error:e.code||'auth_failed'});
+					step(index+1);
+				});
+			};
+			step(0);
+		}
+	}
+	else
 	if('get_custom_account'==request.operation){
 		let target_account=request.account;
 		if(false===target_account){
@@ -2687,6 +2766,21 @@ function handle_message(request,sender,sendResponse){
 
 									authority:request.authority,
 									data_to_sign:request.data_to_sign,
+								};
+							}
+							if('encrypt'==request.operation||'decrypt'==request.operation){
+								action_request={
+									tab_id,
+									origin,
+									id:request.id,
+									operation:request.operation,
+									operation_type:request.operation_type,
+									event:request.event,
+
+									account:request.account,
+									to:request.to,
+									message:request.message,
+									items:request.items,
 								};
 							}
 							if('get_custom_account'==request.operation){

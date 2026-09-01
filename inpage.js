@@ -106,6 +106,18 @@ if(typeof window.vizonator == 'undefined'){
 			this.event_numerator++;
 			bind_event_callback('sign_data',event_num,data,callback);
 		},
+		/* memo-key encryption: the page hands over a public key and a string and gets a
+		   string back — neither the memo key nor the shared secret ever leaves here */
+		'encrypt':function(data,callback){
+			let event_num=this.event_numerator;
+			this.event_numerator++;
+			bind_event_callback('encrypt',event_num,data,callback);
+		},
+		'decrypt':function(data,callback){
+			let event_num=this.event_numerator;
+			this.event_numerator++;
+			bind_event_callback('decrypt',event_num,data,callback);
+		},
 	};
 	/* prediction-market operations: one forwarder per operation, generated from the
 	   shared table (pm_ops.js is injected into the page right before this file) */

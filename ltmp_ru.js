@@ -157,6 +157,8 @@ var ltmp_ru_arr={
 	save_rule_caption:'Запомнить',
 
 	memo_caption:'Заметка',
+	memo_recipient_caption:'Публичный ключ получателя',
+	memo_letters_caption:'Сообщений к расшифровке',
 	encode_memo_caption:'Шифрование заметки',
 	sequence_caption:'Номер',
 	beneficiaries_caption:'Бенефициары',
@@ -192,6 +194,8 @@ var ltmp_ru_arr={
 		get_current_account_history:'Получить историю аккаунта',
 		passwordless_auth:'Беспарольная аутентификация',
 		sign_data:'Подписать данные',
+		encrypt:'Зашифровать сообщение memo-ключом',
+		decrypt:'Расшифровать сообщения memo-ключом',
 
 		pm_oracle_register:'Регистрация оракула',
 		pm_oracle_update:'Обновление оракула',
