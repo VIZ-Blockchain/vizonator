@@ -16,6 +16,8 @@ import vm from 'vm';
 
 const target = process.argv[2] || path.join(import.meta.dirname, '..', 'background.js');
 const src = fs.readFileSync(target, 'utf8');
+const pm_ops_path = path.join(path.dirname(target), 'pm_ops.js');
+const pm_ops_src = fs.existsSync(pm_ops_path) ? fs.readFileSync(pm_ops_path, 'utf8') : '';
 
 const viz_calls = [];
 
@@ -70,6 +72,9 @@ function build_context() {
 	ctx.globalThis = ctx;
 	ctx.self = ctx;
 	vm.createContext(ctx);
+	/* the service worker pulls this in with importScripts(), which the sandbox has no
+	   equivalent for — load it by hand so the prediction-market table is present */
+	vm.runInContext(pm_ops_src, ctx, {filename: 'pm_ops.js'});
 	vm.runInContext(src, ctx, {filename: 'background.js'});
 
 	/* minimal unlocked-wallet state */
@@ -140,12 +145,52 @@ const cases = [
 	['inpage fixed_award, plain memo', 'inpage', {operation: 'fixed_award', receiver: 'target', reward_amount: '1.000 VIZ', max_energy: 100, custom_sequence: 0, memo: '', force_memo_encoding: false, beneficiaries: [], tab_id: 1, event: 4}, 'broadcast.fixedAward']
 ];
 
+/* every prediction-market operation must reach viz.broadcast — the whole point of the
+   generic dispatcher is that adding an entry to pm_ops.js is enough, so the test walks
+   the table itself instead of pinning a hand-written list that can drift from it */
+function sample_value(type) {
+	if ('asset' === type) return '1.000 VIZ';
+	if ('array' === type) return ['yes', 'no'];
+	if ('bool' === type) return true;
+	if ('time' === type) return '2026-01-01T00:00:00';
+	if ('string' === type) return 'x';
+	return 1;
+}
+let pm_event = 100;
+for (const op of ctx.VIZ_PM_OPS.names) {
+	const spec = ctx.VIZ_PM_OPS.ops[op];
+	const params = {};
+	for (const [name, type, required] of spec.fields) {
+		if (required) params[name] = sample_value(type);
+	}
+	cases.push([
+		'inpage ' + op, 'inpage',
+		{operation: op, pm_params: params, tab_id: 1, event: ++pm_event},
+		'broadcast.' + ctx.VIZ_PM_OPS.method_name(op) + 'With'
+	]);
+}
+/* a missing required field must be refused before signing, not defaulted to zero */
+cases.push([
+	'inpage pm_place_bet without amount', 'inpage',
+	{operation: 'pm_place_bet', pm_params: {market_id: 1, side: 1, outcome_index: 0}, tab_id: 1, event: ++pm_event},
+	false, 'empty amount'
+]);
+/* a regular-authority operation must not be signed when only the active key is present */
+cases.push([
+	'inpage pm_dispute_vote without regular key', 'inpage',
+	{operation: 'pm_dispute_vote', pm_params: {market_id: 1, vote_outcome: 0, vote_percent: 10000}, tab_id: 1, event: ++pm_event},
+	false, 'empty_regular_key', {regular_key: '', memo_key: '5Kmemo', active_key: '5Kactive'}
+]);
+
 let failed = 0;
-for (const [name, kind, request, expected_broadcast] of cases) {
+for (const [name, kind, request, expected_broadcast, expected_error, account_override] of cases) {
 	viz_calls.length = 0;
+	const saved_account = ctx.account;
+	if (account_override) ctx.account = account_override;
 	const response = (kind === 'popup') ? await call_popup(request) : await call_inpage(request);
-	const broadcasted = viz_calls.indexOf(expected_broadcast) !== -1;
-	const ok = broadcasted && response && false === response.error;
+	ctx.account = saved_account;
+	const broadcasted = expected_broadcast ? (viz_calls.indexOf(expected_broadcast) !== -1) : (viz_calls.length === 0);
+	const ok = broadcasted && response && (expected_error ? expected_error === response.error : false === response.error);
 	if (!ok) failed++;
 	const verdict = ok ? 'PASS' : 'FAIL';
 	const detail = (false === response) ? 'no response (hang)' : JSON.stringify(response);

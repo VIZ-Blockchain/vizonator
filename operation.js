@@ -391,6 +391,11 @@ function action_info(){
 		if('sign_data'==action.operation){
 			operation_str=ltmp_arr.operations_caption.sign_data;
 		}
+		if(typeof VIZ_PM_OPS !== 'undefined' && typeof VIZ_PM_OPS.ops[action.operation] !== 'undefined'){
+			if(typeof ltmp_arr.operations_caption[action.operation] !== 'undefined'){
+				operation_str=ltmp_arr.operations_caption[action.operation];
+			}
+		}
 
 		let result='';
 		if('award'==action.operation){
@@ -575,6 +580,37 @@ function action_info(){
 					display_data=display_data.substring(0,200)+'...';
 				}
 				result+='<p>Data:</p><span class="gray monospace limit-height">'+escape_html(display_data)+'</span>';
+			}
+			result+='</div>';
+		}
+		if(typeof VIZ_PM_OPS !== 'undefined' && typeof VIZ_PM_OPS.ops[action.operation] !== 'undefined'){
+			/* one generic view for every prediction-market operation: the fields are
+			   listed from the shared table, so a new operation shows up here without
+			   its own branch. Money fields are highlighted — they are what the user
+			   actually risks by approving. */
+			let pm_spec=VIZ_PM_OPS.ops[action.operation];
+			let pm_params=action.pm_params?action.pm_params:{};
+			result+='<p class="caption">'+operation_str+'</p>';
+			result+='<p class="orange">'+ltmp_arr.origin_caption+': '+action.origin+'</p>';
+			result+='<p class="gray">'+ltmp_arr.prediction_market_caption+': <span class="monospace">'+escape_html(action.operation)+'</span></p>';
+			result+='<p>'+ltmp_arr.authority_caption+': <span class="'+('active'==pm_spec.authority?'red':'')+'">'+escape_html(pm_spec.authority)+'</span></p>';
+			for(let pm_i=0;pm_i<pm_spec.fields.length;pm_i++){
+				let pm_name=pm_spec.fields[pm_i][0];
+				let pm_type=pm_spec.fields[pm_i][1];
+				if(typeof pm_params[pm_name] === 'undefined' || null===pm_params[pm_name]){
+					continue;
+				}
+				let pm_value=pm_params[pm_name];
+				if('object'==typeof pm_value){
+					pm_value=JSON.stringify(pm_value);
+				}
+				pm_value=escape_html(''+pm_value);
+				if('asset'==pm_type){
+					result+='<p class="blue">'+escape_html(pm_name)+': <span class="">'+pm_value.replace('VIZ','Ƶ').replace('SHARES','Ƶ')+'</span></p>';
+				}
+				else{
+					result+='<p class="gray">'+escape_html(pm_name)+': <span class="monospace limit-height">'+pm_value+'</span></p>';
+				}
 			}
 			result+='</div>';
 		}

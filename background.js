@@ -60,7 +60,7 @@ else{
 var importScripts_error=null;
 if(typeof importScripts === 'function'){
 	try{
-		importScripts('ltmp_arr.js','ltmp_en.js','ltmp_ru.js');
+		importScripts('ltmp_arr.js','ltmp_en.js','ltmp_ru.js','pm_ops.js');
 	}catch(e){
 		importScripts_error=e.message||String(e);
 		console.error('importScripts failed:',importScripts_error);
@@ -658,6 +658,7 @@ var chrome_height_fix=0;
 var js_framework='cash.min.js';
 var js_contentscript='contentscript.js';
 var js_inpage='inpage.js';
+var js_pm_ops='pm_ops.js';
 
 var api_http_gates=[
 	'https://api.viz.world/',
@@ -935,6 +936,47 @@ function inpage_action(request){
 				let response={'error':'refuse','result':response_result}
 				ext_browser.tabs.sendMessage(request.tab_id,{event:request.event,data:response});
 			}
+		});
+	}
+	else
+	if(typeof VIZ_PM_OPS !== 'undefined' && typeof VIZ_PM_OPS.ops[request.operation] !== 'undefined'){
+		/* prediction-market operations: one broadcast path for all of them. The payload
+		   is rebuilt here from the shared table instead of being trusted as it arrived,
+		   and the signing account is always the current user — the page can only supply
+		   the operation fields, never who signs. */
+		let pm_spec=VIZ_PM_OPS.ops[request.operation];
+		let pm_key=('regular'==pm_spec.authority)?account.regular_key:account.active_key;
+		let pm_answer=function(operation_error,operation_result){
+			if(!request.tab_id){
+				return;
+			}
+			ext_browser.tabs.get(request.tab_id,function(tab){
+				if(ext_browser.runtime.lastError){
+					console.log(ext_browser.runtime.lastError.message);
+				}
+				else{
+					let response={'error':operation_error,'result':operation_result}
+					ext_browser.tabs.sendMessage(request.tab_id,{event:request.event,data:response});
+				}
+			});
+		};
+		if(typeof pm_key === 'undefined' || ''==pm_key){
+			pm_answer(('regular'==pm_spec.authority?'empty_regular_key':'empty_active_key'),response_result);
+			return;
+		}
+		let built=VIZ_PM_OPS.build_payload(request.operation,current_user,request.pm_params);
+		if(built.error){
+			pm_answer(built.error,response_result);
+			return;
+		}
+		let pm_method=VIZ_PM_OPS.method_name(request.operation)+'With';
+		if(typeof viz.broadcast[pm_method] !== 'function'){
+			pm_answer('unsupported_operation',response_result);
+			return;
+		}
+		viz.broadcast[pm_method](pm_key,built.payload,function(e,r){
+			console.log(request.operation,e);
+			pm_answer(!!e,(e?response_result:{}));
 		});
 	}
 	else
@@ -1795,7 +1837,7 @@ function check_viz_url(tab_id,url){
 						});
 					}
 				});
-				ext_browser.scripting.executeScript({target:{tabId:tab.id},files:[js_contentscript]},function(){
+				ext_browser.scripting.executeScript({target:{tabId:tab.id},files:[js_pm_ops,js_contentscript]},function(){
 					if(ext_browser.runtime.lastError){
 						console.log('contentscript NOT injected');
 					}
@@ -1803,7 +1845,7 @@ function check_viz_url(tab_id,url){
 						console.log('contentscript injected');
 					}
 				});
-				ext_browser.scripting.executeScript({target:{tabId:tab.id},files:[js_inpage],world:'MAIN'},function(){
+				ext_browser.scripting.executeScript({target:{tabId:tab.id},files:[js_pm_ops,js_inpage],world:'MAIN'},function(){
 					if(ext_browser.runtime.lastError){
 						console.log('inpage NOT injected',ext_browser.runtime.lastError.message);
 					}
@@ -2733,6 +2775,28 @@ function handle_message(request,sender,sendResponse){
 									regular_key:request.regular_key,
 									active_key:request.active_key,
 									memo_key:request.memo_key,
+								};
+							}
+							if(typeof VIZ_PM_OPS !== 'undefined' && typeof VIZ_PM_OPS.ops[request.operation] !== 'undefined'){
+								/* prediction-market operation: refuse early when the key the
+								   operation is signed with is missing in this session, otherwise
+								   the user approves a window that can only end in an error */
+								let pm_authority=VIZ_PM_OPS.ops[request.operation].authority;
+								let pm_key=('regular'==pm_authority)?account.regular_key:account.active_key;
+								if(typeof pm_key === 'undefined' || ''==pm_key){
+									find_error=true;
+									let response={'error':('regular'==pm_authority?'empty_regular_key':'empty_active_key'),'result':false}
+									ext_browser.tabs.sendMessage(tab_id,{event:request.event,data:response});
+								}
+								action_request={
+									tab_id,
+									origin,
+									id:request.id,
+									operation:request.operation,
+									operation_type:request.operation_type,
+									event:request.event,
+
+									pm_params:request.pm_params,
 								};
 							}
 							if(false===trustline){//no trustline for origin, ask user

@@ -107,6 +107,20 @@ if(typeof window.vizonator == 'undefined'){
 			bind_event_callback('sign_data',event_num,data,callback);
 		},
 	};
+	/* prediction-market operations: one forwarder per operation, generated from the
+	   shared table (pm_ops.js is injected into the page right before this file) */
+	if(typeof window.VIZ_PM_OPS !== 'undefined'){
+		window.VIZ_PM_OPS.names.forEach(function(pm_operation){
+			window.vizonator[pm_operation]=function(data,callback){
+				let event_num=window.vizonator.event_numerator;
+				window.vizonator.event_numerator++;
+				bind_event_callback(pm_operation,event_num,data,callback);
+			};
+		});
+		/* the table is only needed while building the methods above — do not leave it
+		   lying around in the page global scope */
+		try{delete window.VIZ_PM_OPS;}catch(e){window.VIZ_PM_OPS=undefined;}
+	}
 	if(typeof window.vizonator_on_load == 'function'){
 		window.vizonator_on_load();
 	}

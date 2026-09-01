@@ -514,6 +514,34 @@ document.addEventListener('vizonator',function(event){
 			});
 		}
 	}
+	else
+	if(typeof VIZ_PM_OPS !== 'undefined' && typeof VIZ_PM_OPS.ops[data_obj.action] !== 'undefined'){
+		/* prediction-market operations share one branch: the payload is validated
+		   against the shared table here so the page gets a straight answer instead of
+		   an approval window for an operation the node would reject anyway */
+		let pm_operation=data_obj.action;
+		let pm_spec=VIZ_PM_OPS.ops[pm_operation];
+		/* actor is filled by the background from the current account, never by the page */
+		let built=VIZ_PM_OPS.build_payload(pm_operation,'@',data);
+		if(built.error){
+			error=built.error;
+			document.dispatchEvent(new CustomEvent('vizonator_'+data_obj.event,{detail:JSON.stringify({'error':error,'result':result})}));
+		}
+		else{
+			delete built.payload[pm_spec.actor];
+			delete built.payload.extensions;
+			ext_browser.runtime.sendMessage({
+				inpage:true,
+				operation:pm_operation,
+				operation_type:['prediction_market',pm_operation,pm_spec.authority],
+				event:data_obj.event,
+
+				pm_params:built.payload,
+
+				action_top,action_left,action_width,action_height
+			});
+		}
+	}
 });
 
 }
