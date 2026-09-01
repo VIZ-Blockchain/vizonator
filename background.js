@@ -74,47 +74,110 @@ var use_offscreen = !ext_firefox && typeof chrome !== 'undefined' && typeof chro
 var offscreen_ready = false;
 var viz_call_queue = [];
 
-function vizCall(method, args, callback, sync) {
+var offscreen_setup_running = false;
+
+function vizCall(method, args, callback, sync, retry) {
 	var msg = {type: 'viz_call', method: method, args: args || []};
 	if (sync) msg.sync = true;
 	if (!offscreen_ready) {
 		console.log('vizCall: queueing', method, 'offscreen not ready');
-		viz_call_queue.push({method: method, args: args, callback: callback, sync: sync});
+		viz_call_queue.push({method: method, args: args, callback: callback, sync: sync, retry: retry || 0});
+		setupOffscreen();
 		return;
 	}
 	console.log('vizCall: sending', method, args);
 	chrome.runtime.sendMessage(msg, function(response) {
+		var last_error = chrome.runtime.lastError;
+		if (last_error || typeof response === 'undefined') {
+			/* offscreen document is gone (service worker restarted, document closed):
+			   re-create it and replay this call once instead of failing silently */
+			console.warn('vizCall: no offscreen receiver for', method, last_error ? last_error.message : '');
+			offscreen_ready = false;
+			if ((retry || 0) < 3) {
+				setTimeout(function() {
+					vizCall(method, args, callback, sync, (retry || 0) + 1);
+				}, 300);
+			}
+			else if (callback) {
+				callback('offscreen_unavailable', undefined);
+			}
+			return;
+		}
 		console.log('vizCall: response for', method, response);
-		if (callback) callback(response ? response.error : true, response ? response.result : undefined);
+		if (callback) callback(response.error, response.result);
 	});
 }
 
 function flushVizQueue() {
 	while (viz_call_queue.length > 0) {
 		var item = viz_call_queue.shift();
-		vizCall(item.method, item.args, item.callback, item.sync);
+		vizCall(item.method, item.args, item.callback, item.sync, item.retry);
 	}
 }
 
 function setupOffscreen() {
 	if (!use_offscreen) return;
-	chrome.offscreen.createDocument({
-		url: 'offscreen.html',
-		reasons: ['DOM_PARSER'],
-		justification: 'VIZ blockchain library requires DOM APIs'
-	}).then(function() {
-		console.log('offscreen document created');
-	}).catch(function(e) {
-		console.error('offscreen document error:', e);
-	});
+	if (offscreen_ready) return;
+	if (offscreen_setup_running) return;
+	offscreen_setup_running = true;
+
+	var mark_ready = function(reason) {
+		offscreen_setup_running = false;
+		if (offscreen_ready) return;
+		offscreen_ready = true;
+		console.log('offscreen viz ready (' + reason + '), flushing queue');
+		flushVizQueue();
+	};
+
+	var create = function() {
+		chrome.offscreen.createDocument({
+			url: 'offscreen.html',
+			reasons: ['DOM_PARSER'],
+			justification: 'VIZ blockchain library requires DOM APIs'
+		}).then(function() {
+			console.log('offscreen document created');
+			offscreen_setup_running = false;
+			/* readiness comes from the offscreen_ready message */
+		}).catch(function(e) {
+			var message = (e && e.message) ? e.message : String(e);
+			console.error('offscreen document error:', message);
+			offscreen_setup_running = false;
+			if (message.indexOf('Only a single offscreen') !== -1 || message.indexOf('already') !== -1) {
+				/* document already exists (SW restart) — it is alive and listening */
+				mark_ready('already exists');
+			}
+		});
+	};
+
+	/* after a service worker restart the offscreen document may still be alive:
+	   createDocument would reject and every viz call would hang in the queue */
+	if (chrome.runtime.getContexts) {
+		chrome.runtime.getContexts({contextTypes: ['OFFSCREEN_DOCUMENT']}).then(function(contexts) {
+			if (contexts && contexts.length > 0) {
+				mark_ready('existing document');
+			}
+			else {
+				create();
+			}
+		}).catch(function(e) {
+			console.error('getContexts error:', e);
+			create();
+		});
+	}
+	else {
+		create();
+	}
 }
 
 if (use_offscreen) {
 	chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
 		if (msg.type === 'offscreen_ready') {
-			offscreen_ready = true;
-			console.log('offscreen viz ready, flushing queue');
-			flushVizQueue();
+			offscreen_setup_running = false;
+			if (!offscreen_ready) {
+				offscreen_ready = true;
+				console.log('offscreen viz ready, flushing queue');
+				flushVizQueue();
+			}
 		}
 	});
 	setupOffscreen();
@@ -883,35 +946,7 @@ function inpage_action(request){
 		approximate_amount=approximate_amount/1000000;
 
 		viz.api.getAccount(request.receiver,'',function(err,account_response){
-			let operation_error=false;
-			if(!err){
-				let encoded_memo=request.memo;
-				let recipient_memo=account_response.memo_key;
-				if(request.force_memo_encoding){
-					if('VIZ1111111111111111111111111111111114T1Anm'==recipient_memo){
-						operation_error='recipient_memo_error';
-					}
-					else{
-						viz.memo.encode(account.memo_key,recipient_memo,'#'+request.memo,function(result,error){
-							if(error){
-								operation_error='encrypt_memo_error';
-							}
-							else{
-								encoded_memo=result;
-							}
-							doInpageAwardBroadcast(operation_error,encoded_memo,request,account,approximate_amount);
-						});
-						return;
-					}
-				}
-				if(false===operation_error){
-					doInpageAwardBroadcast(operation_error,encoded_memo,request,account,approximate_amount);
-				}
-			}
-			else{
-				operation_error='recipient_error';
-			}
-			if(false!==operation_error){
+			let send_error=function(operation_error){
 				let response={'error':operation_error,'result':response_result}
 				ext_browser.tabs.get(request.tab_id,function(tab){
 					if(ext_browser.runtime.lastError){
@@ -921,7 +956,53 @@ function inpage_action(request){
 						ext_browser.tabs.sendMessage(request.tab_id,{event:request.event,data:response});
 					}
 				});
+			};
+			if(err){
+				send_error('recipient_error');
+				return;
 			}
+			let recipient_memo=account_response.memo_key;
+			let do_broadcast=function(encoded_memo){
+				viz.broadcast.award(account.regular_key,current_user,request.receiver,parseInt(request.energy),parseInt(request.custom_sequence),encoded_memo,request.beneficiaries,function(e,r){
+					console.log(e);
+					if(request.tab_id){
+						ext_browser.tabs.get(request.tab_id,function(tab){
+							if(ext_browser.runtime.lastError){
+								console.log(ext_browser.runtime.lastError.message);
+							}
+							else{
+								response_error=(!!e);
+								if(!response_error){
+									response_result={approximate_amount};
+								}
+								let response={'error':response_error,'result':response_result}
+								ext_browser.tabs.sendMessage(request.tab_id,{event:request.event,data:response});
+								if(!e){//manual update account energy
+									current_energy-=parseInt(request.energy);
+									localStorage['current_energy']=current_energy;
+									let new_energy=current_energy;
+									ext_browser.action.setBadgeText({text:''+parseInt(parseFloat(new_energy)/100)+'%'});
+								}
+							}
+						});
+					}
+				});
+			};
+			if(request.force_memo_encoding){
+				if('VIZ1111111111111111111111111111111114T1Anm'==recipient_memo){
+					send_error('recipient_memo_error');
+					return;
+				}
+				viz.memo.encode(account.memo_key,recipient_memo,'#'+request.memo,function(result,error){
+					if(error){
+						send_error('encrypt_memo_error');
+						return;
+					}
+					do_broadcast(result);
+				});
+				return;
+			}
+			do_broadcast(request.memo);
 		});
 	}
 	else
@@ -935,53 +1016,7 @@ function inpage_action(request){
 		let approximate_energy=(reward_amount_float/approximate_amount)*request.max_energy;
 
 		viz.api.getAccount(request.receiver,'',function(err,account_response){
-			let operation_error=false;
-			if(!err){
-				let encoded_memo=request.memo;
-				let recipient_memo=account_response.memo_key;
-				if(request.force_memo_encoding){
-					if('VIZ1111111111111111111111111111111114T1Anm'==recipient_memo){
-						operation_error='recipient_memo_error';
-					}
-					else{
-						viz.memo.encode(account.memo_key,recipient_memo,'#'+request.memo,function(result,error){
-							if(error) operation_error='encrypt_memo_error';
-							else encoded_memo=result;
-							if(false===operation_error){
-								viz.broadcast.fixedAward(account.regular_key,current_user,request.receiver,request.reward_amount,parseInt(request.max_energy),parseInt(request.custom_sequence),encoded_memo,request.beneficiaries,function(e,r){
-									console.log(e);
-									if(request.tab_id){
-										ext_browser.tabs.get(request.tab_id,function(tab){
-											if(ext_browser.runtime.lastError){
-												console.log(ext_browser.runtime.lastError.message);
-											}
-											else{
-												response_error=(!!e);
-												if(!response_error){
-													response_result={approximate_amount:parseFloat(request.reward_amount)};
-												}
-												let response={'error':response_error,'result':response_result}
-												ext_browser.tabs.sendMessage(request.tab_id,{event:request.event,data:response});
-												if(!e){
-													current_energy-=parseInt(approximate_energy);
-													localStorage['current_energy']=current_energy;
-													let new_energy=current_energy;
-													ext_browser.action.setBadgeText({text:''+parseInt(parseFloat(new_energy)/100)+'%'});
-												}
-											}
-										});
-									}
-								});
-							}
-						});
-						return;
-					}
-			}
-			}
-			else{
-				operation_error='recipient_error';
-			}
-			if(false!==operation_error){
+			let send_error=function(operation_error){
 				let response={'error':operation_error,'result':response_result}
 				ext_browser.tabs.get(request.tab_id,function(tab){
 					if(ext_browser.runtime.lastError){
@@ -991,53 +1026,59 @@ function inpage_action(request){
 						ext_browser.tabs.sendMessage(request.tab_id,{event:request.event,data:response});
 					}
 				});
+			};
+			if(err){
+				send_error('recipient_error');
+				return;
 			}
+			let recipient_memo=account_response.memo_key;
+			let do_broadcast=function(encoded_memo){
+				viz.broadcast.fixedAward(account.regular_key,current_user,request.receiver,request.reward_amount,parseInt(request.max_energy),parseInt(request.custom_sequence),encoded_memo,request.beneficiaries,function(e,r){
+					console.log(e);
+					if(request.tab_id){
+						ext_browser.tabs.get(request.tab_id,function(tab){
+							if(ext_browser.runtime.lastError){
+								console.log(ext_browser.runtime.lastError.message);
+							}
+							else{
+								response_error=(!!e);
+								if(!response_error){
+									response_result={approximate_amount:parseFloat(request.reward_amount)};
+								}
+								let response={'error':response_error,'result':response_result}
+								ext_browser.tabs.sendMessage(request.tab_id,{event:request.event,data:response});
+								if(!e){
+									current_energy-=parseInt(approximate_energy);
+									localStorage['current_energy']=current_energy;
+									let new_energy=current_energy;
+									ext_browser.action.setBadgeText({text:''+parseInt(parseFloat(new_energy)/100)+'%'});
+								}
+							}
+						});
+					}
+				});
+			};
+			if(request.force_memo_encoding){
+				if('VIZ1111111111111111111111111111111114T1Anm'==recipient_memo){
+					send_error('recipient_memo_error');
+					return;
+				}
+				viz.memo.encode(account.memo_key,recipient_memo,'#'+request.memo,function(result,error){
+					if(error){
+						send_error('encrypt_memo_error');
+						return;
+					}
+					do_broadcast(result);
+				});
+				return;
+			}
+			do_broadcast(request.memo);
 		});
 	}
 	else
 	if('transfer'==request.operation){
 		viz.api.getAccount(request.to,'',function(err,account_response){
-			let operation_error=false;
-			if(!err){
-				let encoded_memo=request.memo;
-				let recipient_memo=account_response.memo_key;
-				if(request.force_memo_encoding){
-					if('VIZ1111111111111111111111111111111114T1Anm'==recipient_memo){
-						operation_error='recipient_memo_error';
-					}
-					else{
-						viz.memo.encode(account.memo_key,recipient_memo,'#'+request.memo,function(result,error){
-							if(error) operation_error='encrypt_memo_error';
-							else encoded_memo=result;
-							if(false===operation_error){
-								viz.broadcast.transfer(account.active_key,current_user,request.to,request.amount,encoded_memo,function(e,r){
-									console.log(e);
-									if(request.tab_id){
-										ext_browser.tabs.get(request.tab_id,function(tab){
-											if(ext_browser.runtime.lastError){
-												console.log(ext_browser.runtime.lastError.message);
-											}
-											else{
-												response_error=(!!e);
-												if(!response_error){
-													response_result={};
-												}
-												let response={'error':response_error,'result':response_result}
-												ext_browser.tabs.sendMessage(request.tab_id,{event:request.event,data:response});
-											}
-										});
-									}
-								});
-							}
-						});
-						return;
-					}
-			}
-			}
-			else{
-				operation_error='recipient_error';
-			}
-			if(false!==operation_error){
+			let send_error=function(operation_error){
 				let response={'error':operation_error,'result':response_result}
 				ext_browser.tabs.get(request.tab_id,function(tab){
 					if(ext_browser.runtime.lastError){
@@ -1047,7 +1088,47 @@ function inpage_action(request){
 						ext_browser.tabs.sendMessage(request.tab_id,{event:request.event,data:response});
 					}
 				});
+			};
+			if(err){
+				send_error('recipient_error');
+				return;
 			}
+			let recipient_memo=account_response.memo_key;
+			let do_broadcast=function(encoded_memo){
+				viz.broadcast.transfer(account.active_key,current_user,request.to,request.amount,encoded_memo,function(e,r){
+					console.log(e);
+					if(request.tab_id){
+						ext_browser.tabs.get(request.tab_id,function(tab){
+							if(ext_browser.runtime.lastError){
+								console.log(ext_browser.runtime.lastError.message);
+							}
+							else{
+								response_error=(!!e);
+								if(!response_error){
+									response_result={};
+								}
+								let response={'error':response_error,'result':response_result}
+								ext_browser.tabs.sendMessage(request.tab_id,{event:request.event,data:response});
+							}
+						});
+					}
+				});
+			};
+			if(request.force_memo_encoding){
+				if('VIZ1111111111111111111111111111111114T1Anm'==recipient_memo){
+					send_error('recipient_memo_error');
+					return;
+				}
+				viz.memo.encode(account.memo_key,recipient_memo,'#'+request.memo,function(result,error){
+					if(error){
+						send_error('encrypt_memo_error');
+						return;
+					}
+					do_broadcast(result);
+				});
+				return;
+			}
+			do_broadcast(request.memo);
 		});
 	}
 	else
@@ -1523,11 +1604,11 @@ function inpage_action(request){
 						function checkActive(regular_valid,memo_valid,active_key,regular_key,memo_key){
 							if(''==active_key || false===active_key){
 								var active_valid=true;
-								finishImport(regular_valid,memo_valid,active_valid,active_key,regular_key,memo_key,new_user,request.tab_id);
+								finishImport(regular_valid,memo_valid,active_valid,active_key,regular_key,memo_key,new_user,request.tab_id,request.event);
 							}
 							else{
 								viz.auth.isWif(active_key,function(active_valid){
-									finishImport(regular_valid,memo_valid,active_valid,active_key,regular_key,memo_key,new_user,request.tab_id);
+									finishImport(regular_valid,memo_valid,active_valid,active_key,regular_key,memo_key,new_user,request.tab_id,request.event);
 								});
 							}
 						}
@@ -1540,7 +1621,7 @@ function inpage_action(request){
 	}
 }
 
-function finishImport(regular_valid,memo_valid,active_valid,active_key,regular_key,memo_key,new_user,tab_id){
+function finishImport(regular_valid,memo_valid,active_valid,active_key,regular_key,memo_key,new_user,tab_id,event){
 	//fix if only active key is provided
 	if(!regular_valid){
 		if(active_valid){
@@ -1559,7 +1640,7 @@ function finishImport(regular_valid,memo_valid,active_valid,active_key,regular_k
 				'error':false,
 				'result':true
 			};
-			ext_browser.tabs.sendMessage(tab_id,{event:'import_account',data:response});
+			ext_browser.tabs.sendMessage(tab_id,{event:event,data:response});
 		});
 	}
 	else{
@@ -1567,7 +1648,7 @@ function finishImport(regular_valid,memo_valid,active_valid,active_key,regular_k
 			'error':'invalid keys',
 			'result':false
 		};
-		ext_browser.tabs.sendMessage(tab_id,{event:'import_account',data:response});
+		ext_browser.tabs.sendMessage(tab_id,{event:event,data:response});
 	}
 }
 
@@ -2017,47 +2098,46 @@ function handle_message(request,sender,sendResponse){
 						approximate_amount=approximate_amount/1000000;
 
 						viz.api.getAccount(request.receiver,'',function(err,account_response){
-							let operation_error=false;
-							if(!err){
-								let encoded_memo=request.memo;
-								let recipient_memo=account_response.memo_key;
-								if(request.force_memo_encoding){
-									if('VIZ1111111111111111111111111111111114T1Anm'==recipient_memo){
-										operation_error='recipient_memo_error';
+							let send_error=function(operation_error){
+								sendResponse({'error':operation_error,'result':response_result});
+							};
+							if(err){
+								send_error('default_recipient_error');
+								return;
+							}
+							let recipient_memo=account_response.memo_key;
+							let do_broadcast=function(encoded_memo){
+								viz.broadcast.award(account.regular_key,current_user,request.receiver,parseInt(request.energy),parseInt(request.custom_sequence),encoded_memo,request.beneficiaries,function(e,r){
+									console.log(e);
+									response_error=(!!e);
+									if(!response_error){
+										response_result={approximate_amount};
 									}
-									else{
-										viz.memo.encode(account.memo_key,recipient_memo,'#'+request.memo,function(result,error){
-											if(error) operation_error='encrypt_memo_error';
-											else encoded_memo=result;
-											if(false===operation_error){
-												viz.broadcast.award(account.regular_key,current_user,request.receiver,parseInt(request.energy),parseInt(request.custom_sequence),encoded_memo,request.beneficiaries,function(e,r){
-													console.log(e);
-													response_error=(!!e);
-													if(!response_error){
-														response_result={approximate_amount};
-													}
-													let response={'error':response_error,'result':response_result}
-													sendResponse(response);
-													if(!e){
-														current_energy-=parseInt(request.energy);
-														localStorage['current_energy']=current_energy;
-														let new_energy=current_energy;
-														ext_browser.action.setBadgeText({text:''+parseInt(parseFloat(new_energy)/100)+'%'});
-													}
-												});
-											}
-										});
+									let response={'error':response_error,'result':response_result}
+									sendResponse(response);
+									if(!e){
+										current_energy-=parseInt(request.energy);
+										localStorage['current_energy']=current_energy;
+										let new_energy=current_energy;
+										ext_browser.action.setBadgeText({text:''+parseInt(parseFloat(new_energy)/100)+'%'});
+									}
+								});
+							};
+							if(request.force_memo_encoding){
+								if('VIZ1111111111111111111111111111111114T1Anm'==recipient_memo){
+									send_error('recipient_memo_error');
+									return;
+								}
+								viz.memo.encode(account.memo_key,recipient_memo,'#'+request.memo,function(result,error){
+									if(error){
+										send_error('encrypt_memo_error');
 										return;
 									}
+									do_broadcast(result);
+								});
+								return;
 							}
-							}
-							else{
-								operation_error='default_recipient_error';
-							}
-							if(false!==operation_error){
-								let response={'error':operation_error,'result':response_result}
-								sendResponse(response);
-							}
+							do_broadcast(request.memo);
 						});
 					}
 					if('fixed_award'==request.operation){
@@ -2070,90 +2150,88 @@ function handle_message(request,sender,sendResponse){
 						let approximate_energy=(reward_amount_float/approximate_amount)*request.max_energy;
 
 						viz.api.getAccount(request.receiver,'',function(err,account_response){
-							let operation_error=false;
-							if(!err){
-								let encoded_memo=request.memo;
-								let recipient_memo=account_response.memo_key;
-								if(request.force_memo_encoding){
-									if('VIZ1111111111111111111111111111111114T1Anm'==recipient_memo){
-										operation_error='recipient_memo_error';
+							let send_error=function(operation_error){
+								sendResponse({'error':operation_error,'result':response_result});
+							};
+							if(err){
+								send_error('default_recipient_error');
+								return;
+							}
+							let recipient_memo=account_response.memo_key;
+							let do_broadcast=function(encoded_memo){
+								viz.broadcast.fixedAward(account.regular_key,current_user,request.receiver,request.reward_amount,parseInt(request.max_energy),parseInt(request.custom_sequence),encoded_memo,request.beneficiaries,function(e,r){
+									console.log(e);
+									response_error=(!!e);
+									if(!response_error){
+										response_result={approximate_amount};
 									}
-									else{
-										viz.memo.encode(account.memo_key,recipient_memo,'#'+request.memo,function(result,error){
-											if(error) operation_error='encrypt_memo_error';
-											else encoded_memo=result;
-											if(false===operation_error){
-												viz.broadcast.fixedAward(account.regular_key,current_user,request.receiver,request.reward_amount,parseInt(request.max_energy),parseInt(request.custom_sequence),encoded_memo,request.beneficiaries,function(e,r){
-													console.log(e);
-													response_error=(!!e);
-													if(!response_error){
-														response_result={approximate_amount};
-													}
-													let response={'error':response_error,'result':response_result}
-													sendResponse(response);
-													if(!e){
-														current_energy-=parseInt(approximate_energy);
-														localStorage['current_energy']=current_energy;
-														let new_energy=current_energy;
-														ext_browser.action.setBadgeText({text:''+parseInt(parseFloat(new_energy)/100)+'%'});
-													}
-												});
-											}
-										});
+									let response={'error':response_error,'result':response_result}
+									sendResponse(response);
+									if(!e){
+										current_energy-=parseInt(approximate_energy);
+										localStorage['current_energy']=current_energy;
+										let new_energy=current_energy;
+										ext_browser.action.setBadgeText({text:''+parseInt(parseFloat(new_energy)/100)+'%'});
+									}
+								});
+							};
+							if(request.force_memo_encoding){
+								if('VIZ1111111111111111111111111111111114T1Anm'==recipient_memo){
+									send_error('recipient_memo_error');
+									return;
+								}
+								viz.memo.encode(account.memo_key,recipient_memo,'#'+request.memo,function(result,error){
+									if(error){
+										send_error('encrypt_memo_error');
 										return;
 									}
+									do_broadcast(result);
+								});
+								return;
 							}
-							else{
-								operation_error='default_recipient_error';
-							}
-							if(false!==operation_error){
-								let response={'error':operation_error,'result':response_result}
-								sendResponse(response);
-							}
-						}
+							do_broadcast(request.memo);
 						});
 					}
 					if('transfer'==request.operation){
 						viz.api.getAccount(request.to,'',function(err,account_response){
-							let operation_error=false;
-							if(!err){
-								let encoded_memo=request.memo;
-								let recipient_memo=account_response.memo_key;
-								if(request.force_memo_encoding){
-									if('VIZ1111111111111111111111111111111114T1Anm'==recipient_memo){
-										operation_error='recipient_memo_error';
+							let send_error=function(operation_error){
+								sendResponse({'error':operation_error,'result':response_result});
+							};
+							if(err){
+								send_error('default_recipient_error');
+								return;
+							}
+							let recipient_memo=account_response.memo_key;
+							let do_broadcast=function(encoded_memo){
+								viz.broadcast.transfer(account.active_key,current_user,request.to,request.amount,encoded_memo,function(e,r){
+									console.log(e);
+									response_error=(!!e);
+									if(!response_error){
+										response_result={};
 									}
-									else{
-										viz.memo.encode(account.memo_key,recipient_memo,'#'+request.memo,function(result,error){
-											if(error) operation_error='encrypt_memo_error';
-											else encoded_memo=result;
-											if(false===operation_error){
-												viz.broadcast.transfer(account.active_key,current_user,request.to,request.amount,encoded_memo,function(e,r){
-													console.log(e);
-													response_error=(!!e);
-													if(!response_error){
-														response_result={};
-													}
-													let response={'error':response_error,'result':response_result}
-													sendResponse(response);
-													if(!e){
-														current_balance=parseFloat(current_balance)-parseFloat(request.amount).toFixed(3);
-														localStorage['current_balance']=current_balance;
-													}
-												});
-											}
-										});
+									let response={'error':response_error,'result':response_result}
+									sendResponse(response);
+									if(!e){
+										current_balance=parseFloat(parseFloat(current_balance)-parseFloat(request.amount)).toFixed(3);
+										localStorage['current_balance']=current_balance;
+									}
+								});
+							};
+							if(request.force_memo_encoding){
+								if('VIZ1111111111111111111111111111111114T1Anm'==recipient_memo){
+									send_error('recipient_memo_error');
+									return;
+								}
+								viz.memo.encode(account.memo_key,recipient_memo,'#'+request.memo,function(result,error){
+									if(error){
+										send_error('encrypt_memo_error');
 										return;
 									}
+									do_broadcast(result);
+								});
+								return;
 							}
-							else{
-								operation_error='default_recipient_error';
-							}
-							if(false!==operation_error){
-								let response={'error':operation_error,'result':response_result}
-								sendResponse(response);
-							}
-						}
+							do_broadcast(request.memo);
 						});
 					}
 					if('transfer_to_vesting'==request.operation){
@@ -2245,10 +2323,8 @@ function handle_message(request,sender,sendResponse){
 						});
 					}
 					if('decode_memo'==request.operation){
-						let decoded_memo='';
-						let error=false;
 						if(''==users[current_user].memo_key){
-							error=true;
+							sendResponse({'error':true,'result':''});
 						}
 						else{
 							viz.memo.decode(users[current_user].memo_key,request.memo,function(result,error){

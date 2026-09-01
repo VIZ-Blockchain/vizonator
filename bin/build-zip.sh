@@ -25,7 +25,7 @@ fi
 python3 -c "
 import zipfile, os, json, shutil, tempfile
 
-exclude = {'.git', '.github', 'bin', 'screenshot', '.gitignore', '.gitattributes', 'DEPLOY.md'}
+exclude = {'.git', '.github', 'bin', 'screenshot', 'tests', '.gitignore', '.gitattributes', 'DEPLOY.md'}
 exclude_ext = ('.sh', '.md')
 browser = '$BROWSER'
 manifest_src = '$MANIFEST_SRC'
