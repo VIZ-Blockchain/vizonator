@@ -9,6 +9,11 @@ var ltmp_en_arr={
 	remove_account_caption:'Remove account credentials',
 	remove_last_account_caption:'Remove account credentials and all settings',
 
+	accounts_caption:'Accounts in session',
+	accounts_descr:'Keys are stored locally and are used to sign operations. You can keep several accounts and switch between them.',
+	use_account_caption:'Use',
+	cancel_caption:'Cancel',
+	delete_account_confirm:'Delete account data',
 	select_account_title:'Select account',
 	current_account_caption:'Current account',
 	delete_account_caption:'Delete account data',

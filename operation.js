@@ -68,7 +68,7 @@ function get_state(callback){
 			else{
 				rules=state.rules;
 			}
-			ltmp_arr=window['ltmp_'+settings.lang+'_arr'];
+			ltmp_arr=ltmp_lang_arr(settings.lang);
 
 			if(typeof localStorage['current_energy'] !== 'undefined'){
 				current_energy=localStorage['current_energy'];
@@ -79,7 +79,7 @@ function get_state(callback){
 			if(typeof localStorage['lang'] !== 'undefined'){
 				settings.lang=localStorage['lang'];
 			}
-			ltmp_arr=window['ltmp_'+settings.lang+'_arr'];
+			ltmp_arr=ltmp_lang_arr(settings.lang);
 			if(typeof localStorage['dark'] !== 'undefined'){
 				settings.dark=localStorage['dark'];
 				if(typeof settings.dark == 'string'){

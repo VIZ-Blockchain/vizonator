@@ -9,6 +9,11 @@ var ltmp_ru_arr={
 	remove_account_caption:'Удалить учетные данные',
 	remove_last_account_caption:'Удалить учетные данные и все настройки',
 
+	accounts_caption:'Аккаунты в сессии',
+	accounts_descr:'Ключи хранятся локально и используются для подписи операций. Можно держать несколько аккаунтов и переключаться между ними.',
+	use_account_caption:'Использовать',
+	cancel_caption:'Отмена',
+	delete_account_confirm:'Удалить данные аккаунта',
 	select_account_title:'Выберите аккаунт',
 	current_account_caption:'Используемый аккаунт',
 	delete_account_caption:'Удалить данные аккаунта',

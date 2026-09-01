@@ -47,6 +47,10 @@ function get_state(callback){
 	ext_browser.runtime.sendMessage({get_state:true},function(response){
 		console.log('get_state response',response);
 		if(!response){
+			if(typeof localStorage['lang'] !== 'undefined'){
+				settings.lang=localStorage['lang'];
+			}
+			ltmp_arr=ltmp_lang_arr(settings.lang);
 			callback(false);
 			return;
 		}
@@ -69,7 +73,7 @@ function get_state(callback){
 			else{
 				rules=state.rules;
 			}
-			ltmp_arr=window['ltmp_'+settings.lang+'_arr'];
+			ltmp_arr=ltmp_lang_arr(settings.lang);
 
 			if(typeof localStorage['current_energy'] !== 'undefined'){
 				current_energy=localStorage['current_energy'];
@@ -80,7 +84,7 @@ function get_state(callback){
 			if(typeof localStorage['lang'] !== 'undefined'){
 				settings.lang=localStorage['lang'];
 			}
-			ltmp_arr=window['ltmp_'+settings.lang+'_arr'];
+			ltmp_arr=ltmp_lang_arr(settings.lang);
 			if(typeof localStorage['dark'] !== 'undefined'){
 				settings.dark=localStorage['dark'];
 				if(typeof settings.dark == 'string'){
@@ -116,34 +120,202 @@ function save_state(callback){
 	});
 }
 
-var remove_account=function(){
-	delete users[current_user];
-	account={
-		regular_key:'',
-		memo_key:'',
-		active_key:'',
-	};
-	current_user='';
+//removes one account from the session, keeps the rest; full wipe only when it was the last one
+var delete_account=function(login){
+	if(typeof users[login] === 'undefined'){
+		return;
+	}
+	delete users[login];
 	let users_list=Object.keys(users);
 	if(0<users_list.length){
-		current_user=users_list[0];
-		account=users[current_user];
+		if(current_user==login){
+			current_user=users_list[0];
+			account=users[current_user];
+		}
 		save_state(function(){
 			ext_browser.runtime.sendMessage({reload_state:true});
 			main_app();
 		});
 	}
 	else{
+		account={
+			regular_key:'',
+			memo_key:'',
+			active_key:'',
+		};
+		current_user='';
 		delete localStorage['state'];
 
 		state={};
 		ext_browser.runtime.sendMessage({reload_state:true});
 		$('.info').html('');
 		$('.control').html('<p>'+ltmp_arr.removed_data+'</p>');
+		$('.lock').html('');
+		$('.rules-list').html('');
 		$('.control .refresh-page').on('click',function(){
 			window.location=window.location;
 		});
 	}
+}
+
+var select_account=function(login){
+	if(typeof users[login] === 'undefined'){
+		return;
+	}
+	current_user=login;
+	account=users[current_user];
+	save_state(function(){
+		ext_browser.runtime.sendMessage({reload_state:true});
+		main_app();
+	});
+}
+
+//account form, mode: 'add' (login editable) or 'edit' (login fixed, keys prefilled)
+var account_form_html=function(mode,login){
+	let acc=(('edit'==mode && typeof users[login] !== 'undefined')?users[login]:{regular_key:'',memo_key:'',active_key:''});
+	let result='';
+	result+='<div class="account-form" data-mode="'+mode+'" data-login="'+('edit'==mode?login:'')+'">';
+	result+='<p><b>'+('edit'==mode?ltmp_arr.edit_account_title:ltmp_arr.add_account_title)+'</b></p>';
+	if('edit'==mode){
+		result+='<p><input type="text" class="login" value="'+login+'" readonly> &mdash; '+ltmp_arr.form_login_edit_descr+'</p>';
+	}
+	else{
+		result+='<p><input type="text" autocomplete="off" class="login" value=""> &mdash; '+ltmp_arr.form_login+' <span class="red">*</span></p>';
+	}
+	result+='<p><input type="password" autocomplete="off" class="regular_key" value="'+acc['regular_key']+'"> &mdash; '+ltmp_arr.form_regular_key+' <span class="red">*</span></p>';
+	result+='<p><input type="password" autocomplete="off" class="memo_key" value="'+acc['memo_key']+'"> &mdash; '+ltmp_arr.form_memo_key+' (<span class="dotted" title="'+ltmp_arr.form_memo_key_descr+'">'+ltmp_arr.form_optional+'</span>)</p>';
+	result+='<p><input type="password" autocomplete="off" class="active_key" value="'+acc['active_key']+'"> &mdash; '+ltmp_arr.form_active_key+' (<span class="dotted" title="'+ltmp_arr.form_active_key_descr+'">'+ltmp_arr.form_optional+'</span>)</p>';
+	result+='<div class="error" style="color:red;"></div>';
+	result+='<p><input type="button" class="save-account" value="'+('edit'==mode?ltmp_arr.form_edit_caption:ltmp_arr.form_save_caption)+'">';
+	if('edit'==mode){
+		result+=' <input type="button" class="cancel-account-form" value="'+ltmp_arr.cancel_caption+'">';
+	}
+	result+='</p>';
+	result+='</div>';
+	return result;
+}
+
+var save_account_action=function(){
+	let form=$('.account-form');
+	let mode=form.data('mode');
+	form.find('.error').html('');
+	form.find('.save-account').attr('disabled','disabled');
+
+	let new_user=form.find('.login').val();
+	new_user=new_user.trim();
+	if('@'==new_user.substring(0,1)){
+		new_user=new_user.substring(1);
+	}
+	new_user=new_user.toLowerCase();
+
+	let regular_key=form.find('.regular_key').val().trim();
+	let memo_key=form.find('.memo_key').val().trim();
+	let active_key=form.find('.active_key').val().trim();
+
+	let regular_valid=viz.auth.isWif(regular_key);
+	let memo_valid=(''==memo_key?true:viz.auth.isWif(memo_key));
+	let active_valid=(''==active_key?true:viz.auth.isWif(active_key));
+
+	if(''==new_user){
+		form.find('.error').html(ltmp_arr.form_login);
+		form.find('.save-account').removeAttr('disabled');
+		return;
+	}
+
+	if(regular_valid && memo_valid && active_valid){
+		users[new_user]={'regular_key':regular_key,'memo_key':memo_key,'active_key':active_key};
+		if('edit'!=mode || ''==current_user){
+			current_user=new_user;
+		}
+		if(typeof users[current_user] !== 'undefined'){
+			account=users[current_user];
+		}
+		save_state(function(){
+			ext_browser.runtime.sendMessage({reload_state:true});
+			main_app();
+		});
+	}
+	else{
+		let invalid_keys=[];
+		if(!regular_valid){
+			invalid_keys.push('regular');
+		}
+		if(!memo_valid){
+			invalid_keys.push('memo');
+		}
+		if(!active_valid){
+			invalid_keys.push('active');
+		}
+		form.find('.error').html(ltmp_arr.form_invalid_keys+invalid_keys.join(', '));
+		form.find('.save-account').removeAttr('disabled');
+	}
+}
+
+//accounts of the session: list with switch/edit/delete + add form
+function accounts_view(edit_login){
+	let result='';
+	result+='<h2>'+ltmp_arr.accounts_caption+'</h2>';
+	result+='<p class="gray">'+ltmp_arr.accounts_descr+'</p>';
+	let users_list=Object.keys(users);
+	if(0<users_list.length){
+		result+='<div class="accounts">';
+		for(let i in users_list){
+			let login=users_list[i];
+			let acc=users[login];
+			result+='<div class="account-row'+(login==current_user?' current':'')+'" data-login="'+login+'">';
+			result+='<b>'+login+'</b>';
+			result+=(''==acc['memo_key']?' <span class="red dotted" title="'+ltmp_arr.empty_memo_title+'">&minus;memo</span>':' <span class="dashed" title="'+ltmp_arr.memo_title+'">+memo</span>');
+			result+=(''==acc['active_key']?' <span class="red dotted" title="'+ltmp_arr.empty_active_title+'">&minus;active</span>':' <span class="dashed" title="'+ltmp_arr.active_title+'">+active</span>');
+			if(login==current_user){
+				result+=' <span class="current-account">&mdash; '+ltmp_arr.current_account_caption+'</span>';
+			}
+			else{
+				result+=' <a href="#" class="select-account" title="'+ltmp_arr.select_account_title+'">'+ltmp_arr.use_account_caption+'</a>';
+			}
+			result+=' <a href="#" class="edit-account" title="'+ltmp_arr.edit_account_caption+'">✏️</a>';
+			result+=' <a href="#" class="delete-account" title="'+ltmp_arr.delete_account_caption+'">❌</a>';
+			result+='</div>';
+		}
+		result+='</div>';
+	}
+	else{
+		result+='<p>'+ltmp_arr.connect_account+':</p>';
+	}
+
+	if(typeof edit_login !== 'undefined' && typeof users[edit_login] !== 'undefined'){
+		result+=account_form_html('edit',edit_login);
+	}
+	else{
+		result+=account_form_html('add','');
+	}
+
+	$('.control').html(result);
+
+	$('.select-account').off('click');
+	$('.select-account').on('click',function(e){
+		e.preventDefault();
+		select_account($(this).closest('.account-row').data('login'));
+	});
+	$('.edit-account').off('click');
+	$('.edit-account').on('click',function(e){
+		e.preventDefault();
+		accounts_view($(this).closest('.account-row').data('login'));
+	});
+	$('.delete-account').off('click');
+	$('.delete-account').on('click',function(e){
+		e.preventDefault();
+		let login=$(this).closest('.account-row').data('login');
+		let last=(1==Object.keys(users).length);
+		if(window.confirm((last?ltmp_arr.remove_last_account_caption:ltmp_arr.delete_account_confirm)+': '+login+'?')){
+			delete_account(login);
+		}
+	});
+	$('.cancel-account-form').off('click');
+	$('.cancel-account-form').on('click',function(){
+		accounts_view();
+	});
+	$('.save-account').off('click');
+	$('.save-account').on('click',save_account_action);
 }
 
 function rules_list(){
@@ -348,111 +520,26 @@ function main_app(){
 		});
 	});
 
+	$('.info').html('<p>'+ltmp_arr.current_status+': <span class="status">&mdash;</span></p>');
 	if(''!=current_user){
-		$('.info').html('<p>'+ltmp_arr.current_status+': <span class="status">&mdash;</span></p>');
-		$('.info .status').html('<span class="green">'+ltmp(ltmp_arr.status_used_account,{account:current_user})+'</span>');
-		$('.info .status').html($('.info .status').html()
-			+(!account['memo']?' <span class="red dotted" title="'+ltmp_arr.empty_memo_title+'">&minus;memo</span>':' <span class="dashed" title="'+ltmp_arr.memo_title+'">+memo</span>')
-			+(!account['active']?' <span class="red dotted" title="'+ltmp_arr.empty_active_title+'">&minus;active</span>':' <span class="dashed" title="'+ltmp_arr.active_title+'">+active</span>')
+		$('.info .status').html('<span class="green">'+ltmp(ltmp_arr.status_used_account,{account:current_user})+'</span>'
+			+(!account['memo_key']?' <span class="red dotted" title="'+ltmp_arr.empty_memo_title+'">&minus;memo</span>':' <span class="dashed" title="'+ltmp_arr.memo_title+'">+memo</span>')
+			+(!account['active_key']?' <span class="red dotted" title="'+ltmp_arr.empty_active_title+'">&minus;active</span>':' <span class="dashed" title="'+ltmp_arr.active_title+'">+active</span>')
 		);
-		let result='';
-		let users_count=Object.keys(users).length;
-		result+='<p><input type="button" class="remove-account" value="'+(1!=users_count?ltmp_arr.remove_account_caption:ltmp_arr.remove_last_account_caption)+'"></p>';
-		$('.control').html(result);
-		$('.remove-account').on('click',remove_account);
+	}
+	else{
+		$('.info .status').html('<span style="color:red;font-weight:bold;">'+ltmp_arr.empty_account+'</span>');
+	}
 
+	accounts_view();
+
+	if(''!=current_user){
 		lock_view();
 		rules_list();
 	}
 	else{
 		$('.lock').html('');
 		$('.rules-list').html('');
-		$('.info').html('<p>'+ltmp_arr.current_status+': <span class="status">&mdash;</span></p>');
-		$('.info .status').html('<span style="color:red;font-weight:bold;">'+ltmp_arr.empty_account+'</span>');
-		let result='';
-		result+='<p>'+ltmp_arr.connect_account+':</p>';
-		result+='<p><input type="text" autocomplete="off" class="login"> &mdash; '+ltmp_arr.form_login+' <span class="red">*</span></p>';
-		result+='<p><input type="password" autocomplete="off" class="regular_key"> &mdash; '+ltmp_arr.form_regular_key+' <span class="red">*</span></p>';
-		result+='<p><input type="password" autocomplete="off" class="memo_key"> &mdash; '+ltmp_arr.form_memo_key+' (<span class="dotted" title="'+ltmp_arr.form_memo_key_descr+'">'+ltmp_arr.form_optional+'</span>)</p>';
-		result+='<p><input type="password" autocomplete="off" class="active_key"> &mdash; '+ltmp_arr.form_active_key+' (<span class="dotted" title="'+ltmp_arr.form_active_key_descr+'">'+ltmp_arr.form_optional+'</span>)</p>';
-		result+='<div class="error" style="color:red;"></div>';
-		result+='<p><input type="button" class="save-account" value="'+ltmp_arr.form_save_caption+'"></p>';
-		$('.control').html(result);
-		$('.save-account').on('click',function(){
-			$('.error').html('');
-			$('.save-account').attr('disabled','disabled');
-			let new_user=$('.login').val();
-			new_user=new_user.trim();
-			if('@'==new_user.substring(0,1)){
-				new_user=new_user.substring(1);
-			}
-			new_user=new_user.toLowerCase();
-
-			let regular_valid=false;
-			let memo_valid=false;
-			let active_valid=false;
-
-			let regular_key=$('.regular_key').val();
-			regular_key=regular_key.trim();
-
-			let memo_key=$('.memo_key').val();
-			memo_key=memo_key.trim();
-
-			let active_key=$('.active_key').val();
-			active_key=active_key.trim();
-
-			regular_valid=viz.auth.isWif(regular_key);
-			if(''==memo_key){
-				memo_valid=true;
-			}
-			else{
-				memo_valid=viz.auth.isWif(memo_key);
-			}
-			if(''==active_key){
-				active_valid=true;
-			}
-			else{
-				active_valid=viz.auth.isWif(active_key);
-			}
-
-			if(regular_valid && memo_valid && active_valid){
-				current_user=new_user;
-				users[current_user]={'regular_key':regular_key,'memo_key':memo_key,'active_key':active_key};
-				account=users[current_user];
-
-				save_state(function(){
-					ext_browser.runtime.sendMessage({reload_state:true});
-					$('.error').html('');
-					$('.save-account').removeAttr('disabled');
-					$('.info .status').html('<span class="green">'+ltmp(ltmp_arr.status_used_account,{account:current_user})+'</span>');
-					$('.info .status').html($('.info .status').html()
-						+(''==account['memo_key']?' <span class="red dotted" title="'+ltmp_arr.empty_memo_title+'">&minus;memo</span>':' <span class="dashed" title="'+ltmp_arr.memo_title+'">+memo</span>')
-						+(''==account['active_key']?' <span class="red dotted" title="'+ltmp_arr.empty_active_title+'">&minus;active</span>':' <span class="dashed" title="'+ltmp_arr.active_title+'">+active</span>')
-					);
-					let result='';
-					result+='<p><input type="button" class="remove-account" value="'+ltmp_arr.remove_account_caption+'"></p>';
-					$('.control').html(result);
-					$('.remove-account').on('click',remove_account);
-
-					lock_view();
-					rules_list();
-				});
-			}
-			else{
-				let invalid_keys=[];
-				if(!regular_valid){
-					invalid_keys.push('regular');
-				}
-				if(!memo_valid){
-					invalid_keys.push('memo');
-				}
-				if(!active_valid){
-					invalid_keys.push('active');
-				}
-				$('.error').html(ltmp_arr.form_invalid_keys+invalid_keys.join(', '));
-				$('.save-account').removeAttr('disabled');
-			}
-		});
 	}
 }
 

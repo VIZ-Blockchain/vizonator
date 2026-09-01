@@ -167,6 +167,39 @@ body.dark .rules .operations{
 .rules.closed .operations{
 	display:none;
 }
+.account-row{
+	border:1px solid rgba(0,0,0,0.2);
+	background:#eee;
+	padding:8px 15px;
+	margin:6px 0;
+	line-height:28px;
+}
+body.dark .account-row{
+	border:1px solid rgba(255,255,255,0.2);
+	background:#112;
+}
+.account-row.current{
+	border-color:#0056df;
+}
+.account-row a{
+	cursor:pointer;
+	text-decoration:none;
+	margin-left:6px;
+}
+.account-row .select-account{
+	color:#0045b3;
+	border-bottom:1px dotted #0045b3;
+}
+body.dark .account-row .select-account{
+	color:#0097f4;
+	border-bottom:1px dotted #0097f4;
+}
+.account-form{
+	margin-top:15px;
+}
+.account-form input[readonly]{
+	opacity:0.6;
+}
 </style>
 </head>
 <body>
