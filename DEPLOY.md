@@ -111,19 +111,26 @@ Same as Chrome — tag triggers both, both submit for review.
 
 ---
 
-## Version Bump
-
-Before tagging, update version in `manifest.json`:
+## Release (one command)
 
 ```bash
-# Edit manifest.json
-"version": "0.56"
-
-git add manifest.json
-git commit -m "Bump version to 0.56"
-git tag v0.56
-git push origin main --tags
+./bin/release.sh 0.76 "short release note"
+./bin/release.sh 0.76 "note" --dry-run   # tests + bump + build, nothing pushed
 ```
+
+`release.sh` refuses to run off `main` or on a dirty tree, runs the whole `tests/` suite,
+bumps `version` in **both** `manifest.json` and `manifest-firefox.json`, builds both ZIPs
+as a smoke check, then commits, tags `v0.76` and pushes.
+
+Everything after the push is done by `.github/workflows/publish.yml`:
+
+1. `check` — version guard (tag == both manifests) + full test suite. Red → nothing is published.
+2. `publish-chrome` / `publish-firefox` — build ZIP, upload to the store, attach the ZIP as a run artifact.
+3. `release` — creates the **GitHub Release** for the tag with both ZIPs and notes generated
+   from the commits since the previous tag. (Until 0.75 this step was done by hand.)
+
+The suite also runs on every push to `main` and on pull requests
+(`.github/workflows/tests.yml`), so `main` stays release-ready.
 
 ---
 

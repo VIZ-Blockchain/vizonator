@@ -15,8 +15,49 @@ on:
         type: boolean
         default: false
 
+permissions:
+  contents: write
+
 jobs:
+  # Gate: the suite must be green and the tag must match both manifests,
+  # otherwise nothing reaches the stores.
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Version guard
+        run: |
+          CHROME_V=$(python3 -c "import json;print(json.load(open('manifest.json'))['version'])")
+          FF_V=$(python3 -c "import json;print(json.load(open('manifest-firefox.json'))['version'])")
+          echo "manifest.json=$CHROME_V manifest-firefox.json=$FF_V"
+          if [ "$CHROME_V" != "$FF_V" ]; then
+            echo "::error::manifest.json ($CHROME_V) and manifest-firefox.json ($FF_V) disagree"
+            exit 1
+          fi
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            TAG_V="${GITHUB_REF_NAME#v}"
+            if [ "$TAG_V" != "$CHROME_V" ]; then
+              echo "::error::tag ${GITHUB_REF_NAME} does not match manifest version $CHROME_V"
+              exit 1
+            fi
+          fi
+
+      - name: Test suite
+        # google-chrome is preinstalled on ubuntu-latest; no apt needed
+        # (an apt install here used to hang on a dead Ubuntu mirror).
+        env:
+          CHROMIUM_BIN: google-chrome
+        run: |
+          chmod +x bin/run-tests.sh
+          ./bin/run-tests.sh
+
   publish-chrome:
+    needs: check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,6 +66,11 @@ jobs:
         run: |
           chmod +x bin/build-zip.sh
           ./bin/build-zip.sh chrome /tmp/vizonator-chrome.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vizonator-chrome
+          path: /tmp/vizonator-chrome.zip
 
       - name: Publish to Chrome Web Store
         env:
@@ -36,6 +82,7 @@ jobs:
           ./bin/publish-chrome.sh --zip /tmp/vizonator-chrome.zip ${{ inputs.draft_chrome && '--draft' || '' }}
 
   publish-firefox:
+    needs: check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -45,6 +92,11 @@ jobs:
           chmod +x bin/build-zip.sh
           ./bin/build-zip.sh firefox /tmp/vizonator-firefox.zip
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vizonator-firefox
+          path: /tmp/vizonator-firefox.zip
+
       - name: Publish to Firefox AMO
         env:
           FIREFOX_API_KEY: ${{ secrets.FIREFOX_API_KEY }}
@@ -52,3 +104,45 @@ jobs:
         run: |
           chmod +x bin/publish-firefox.sh
           ./bin/publish-firefox.sh --zip /tmp/vizonator-firefox.zip ${{ inputs.draft_firefox && '--draft' || '' }}
+
+  # Was done by hand until 0.75: publish.yml only fed the stores.
+  release:
+    needs: [publish-chrome, publish-firefox]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: vizonator-*
+          path: /tmp/zips
+          merge-multiple: true
+
+      - name: Release notes from the commits since the previous tag
+        run: |
+          PREV=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
+          {
+            if [ -n "$PREV" ]; then
+              echo "Изменения с ${PREV}:"
+              echo
+              git log --no-merges --pretty='- %s' "${PREV}..${GITHUB_REF_NAME}"
+            else
+              git log --no-merges --pretty='- %s' -20 "${GITHUB_REF_NAME}"
+            fi
+            echo
+            echo "Устанавливать из магазинов (Chrome Web Store / Firefox AMO); ZIP приложены для ручной установки."
+          } > /tmp/notes.md
+          cat /tmp/notes.md
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
+            --notes-file /tmp/notes.md \
+            /tmp/zips/vizonator-chrome.zip \
+            /tmp/zips/vizonator-firefox.zip
