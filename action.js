@@ -352,37 +352,31 @@ function main_app(){
 	action_info();
 }
 
-function is_retina(){
-	return ((window.matchMedia && (window.matchMedia('only screen and (min-resolution: 192dpi), only screen and (min-resolution: 2dppx), only screen and (min-resolution: 75.6dpcm)').matches || window.matchMedia('only screen and (-webkit-min-device-pixel-ratio: 2), only screen and (-o-min-device-pixel-ratio: 2/1), only screen and (min--moz-device-pixel-ratio: 2), only screen and (min-device-pixel-ratio: 2)').matches)) || (window.devicePixelRatio && window.devicePixelRatio >= 2)) && /(Mac OS|iPad|iPhone|iPod)/g.test(navigator.userAgent);
+//window frame (title bar + borders) is measured, not guessed
+function window_frame(){
+	let frame={
+		width:Math.max(0,window.outerWidth-window.innerWidth),
+		height:Math.max(0,window.outerHeight-window.innerHeight),
+	};
+	if(0==frame.height){//not measurable yet, fall back to the old constant
+		frame.height=ext_firefox?40:36;
+	}
+	return frame;
 }
 
 function resize_app(){
-	let fix=1;
-	let fix_retina_width=0;
-	let fix_retina_height=0;
-	if(is_retina()){
-		fix=0.5;
-		fix_retina_width=-14;
-		fix_retina_height=-10;
+	if(!ext_browser||!ext_browser.windows||!ext_browser.windows.update){
+		return;
 	}
-	let height_addon=36;
-	if(ext_firefox){
-		height_addon=40;
-	}
-
-	let is_linux=navigator.userAgent.toLowerCase().indexOf('linux')>-1;
-	if(is_linux){
-		ext_browser.windows.update(ext_browser.windows.WINDOW_ID_CURRENT, {
-			width: parseInt($('body').outerWidth()),
-			height: parseInt($('body').outerHeight()),
-		});
-	}
-	else{
-		ext_browser.windows.update(ext_browser.windows.WINDOW_ID_CURRENT, {
-			width: parseInt(fix*window.devicePixelRatio*(document.body.clientWidth+16+fix_retina_width)),
-			height: parseInt(fix*window.devicePixelRatio*(document.body.clientHeight+height_addon+fix_retina_height)),
-		});
-	}
+	//content is measured in CSS pixels and windows.update expects the same units,
+	//so scaling by devicePixelRatio inflates the window on scaled displays
+	let frame=window_frame();
+	let content_width=Math.ceil(Math.max(document.body.offsetWidth,document.body.scrollWidth));
+	let content_height=Math.ceil(Math.max(document.body.offsetHeight,document.body.scrollHeight));
+	ext_browser.windows.update(ext_browser.windows.WINDOW_ID_CURRENT, {
+		width: content_width+frame.width,
+		height: content_height+frame.height,
+	});
 }
 
 var turbo_cat=false;
