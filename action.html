@@ -89,6 +89,9 @@ body.dark .blue{
 .red{color:#ff2020;}
 .monospace{
 	word-wrap:break-word;
+	/* длинный токен без пробелов (base64, hex, data-строка подписи) обязан переноситься,
+	   иначе он уезжает за правый край окна фиксированной ширины */
+	overflow-wrap:anywhere;
 	white-space:pre-wrap;
 	font-family:monospace;
 }
@@ -96,6 +99,9 @@ body.dark .blue{
 	display:block;
 	max-height:100px;
 	overflow-y:auto;
+	overflow-x:hidden;
+	max-width:100%;
+	box-sizing:border-box;
 }
 .limit-height::-webkit-scrollbar {
 	width:4px;

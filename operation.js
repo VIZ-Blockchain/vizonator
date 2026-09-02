@@ -12,6 +12,9 @@ else{
 	}
 }
 var current_user='';
+/* Потолок показа данных sign_data: страница может прислать мегабайты, а в innerHTML
+   такое класть незачем. Обрезка ниже потолка НЕ молчаливая — счётчик символов виден. */
+var SIGN_DATA_VIEW_LIMIT=20000;
 var account={
 	regular_key:'',
 	memo_key:'',
@@ -581,11 +584,19 @@ function action_info(){
 				result+='<p>'+ltmp_arr.authority_caption+': <span class="'+('active'==action.authority?'red':'')+'">'+escape_html(action.authority)+'</span></p>';
 			}
 			if(action.data_to_sign){
-				let display_data=action.data_to_sign;
-				if(display_data.length>200){
-					display_data=display_data.substring(0,200)+'...';
+				/* Данные подписи показываем ЦЕЛИКОМ: обрезка на 200 символах прятала то,
+				   что юзер как раз и должен прочесть перед подписью. Блок скроллится по
+				   вертикали (.limit-height), длинные строки без пробелов переносятся
+				   (.monospace). Совсем гигантский вход всё же режем, но НЕ молча —
+				   с явной подписью, сколько символов показано из скольких. */
+				let data=String(action.data_to_sign);
+				let display_data=data;
+				let caption='Data ('+data.length+')';
+				if(data.length>SIGN_DATA_VIEW_LIMIT){
+					display_data=data.substring(0,SIGN_DATA_VIEW_LIMIT);
+					caption='Data ('+SIGN_DATA_VIEW_LIMIT+' / '+data.length+')';
 				}
-				result+='<p>Data:</p><span class="gray monospace limit-height">'+escape_html(display_data)+'</span>';
+				result+='<p>'+caption+':</p><span class="gray monospace limit-height">'+escape_html(display_data)+'</span>';
 			}
 			result+='</div>';
 		}
