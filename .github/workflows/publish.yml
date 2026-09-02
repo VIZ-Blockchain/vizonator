@@ -6,6 +6,14 @@ on:
       - 'v*'
   workflow_dispatch:
     inputs:
+      tag:
+        description: 'Tag to (re)publish, e.g. v0.76. Empty = current ref'
+        type: string
+        default: ''
+      skip_stores:
+        description: 'Skip store upload (GitHub Release only)'
+        type: boolean
+        default: false
       draft_chrome:
         description: 'Chrome: upload as draft (skip review)'
         type: boolean
@@ -25,6 +33,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - uses: actions/setup-node@v4
         with:
@@ -58,9 +68,12 @@ jobs:
 
   publish-chrome:
     needs: check
+    if: ${{ !inputs.skip_stores }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Build ZIP
         run: |
@@ -83,9 +96,12 @@ jobs:
 
   publish-firefox:
     needs: check
+    if: ${{ !inputs.skip_stores }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Build ZIP
         run: |
@@ -105,44 +121,51 @@ jobs:
           chmod +x bin/publish-firefox.sh
           ./bin/publish-firefox.sh --zip /tmp/vizonator-firefox.zip ${{ inputs.draft_firefox && '--draft' || '' }}
 
-  # Was done by hand until 0.75: publish.yml only fed the stores.
+  # Until 0.75 this was done by hand: publish.yml only fed the stores.
   release:
-    needs: [publish-chrome, publish-firefox]
-    if: github.ref_type == 'tag'
+    needs: [check, publish-chrome, publish-firefox]
+    if: >-
+      ${{ !cancelled()
+          && needs.check.result == 'success'
+          && needs.publish-chrome.result != 'failure'
+          && needs.publish-firefox.result != 'failure'
+          && (github.ref_type == 'tag' || inputs.tag != '') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.tag || github.ref }}
           fetch-depth: 0
 
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: vizonator-*
-          path: /tmp/zips
-          merge-multiple: true
-
-      - name: Release notes from the commits since the previous tag
+      # Built here, not downloaded: the release must be reproducible even when
+      # the store jobs were skipped (repair run for an already published tag).
+      - name: Build both ZIPs
         run: |
-          PREV=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
-          {
-            if [ -n "$PREV" ]; then
-              echo "Изменения с ${PREV}:"
-              echo
-              git log --no-merges --pretty='- %s' "${PREV}..${GITHUB_REF_NAME}"
-            else
-              git log --no-merges --pretty='- %s' -20 "${GITHUB_REF_NAME}"
-            fi
-            echo
-            echo "Устанавливать из магазинов (Chrome Web Store / Firefox AMO); ZIP приложены для ручной установки."
-          } > /tmp/notes.md
-          cat /tmp/notes.md
+          chmod +x bin/build-zip.sh
+          ./bin/build-zip.sh chrome /tmp/vizonator-chrome.zip
+          ./bin/build-zip.sh firefox /tmp/vizonator-firefox.zip
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag || github.ref_name }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" \
-            --title "${GITHUB_REF_NAME}" \
-            --notes-file /tmp/notes.md \
-            /tmp/zips/vizonator-chrome.zip \
-            /tmp/zips/vizonator-firefox.zip
+          PREV=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || true)
+          {
+            if [ -n "$PREV" ]; then
+              echo "Изменения с ${PREV}:"
+              echo
+              git log --no-merges --pretty='- %s' "${PREV}..${TAG}"
+            else
+              git log --no-merges --pretty='- %s' -20 "${TAG}"
+            fi
+            echo
+            echo "Ставить из магазинов (Chrome Web Store / Firefox AMO); ZIP приложены для ручной установки."
+          } > /tmp/notes.md
+          cat /tmp/notes.md
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" /tmp/vizonator-chrome.zip /tmp/vizonator-firefox.zip --clobber
+          else
+            gh release create "$TAG" --title "$TAG" --notes-file /tmp/notes.md \
+              /tmp/vizonator-chrome.zip /tmp/vizonator-firefox.zip
+          fi
