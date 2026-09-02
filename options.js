@@ -170,9 +170,33 @@ var select_account=function(login){
 	});
 }
 
-//account form, mode: 'add' (login editable) or 'edit' (login fixed, keys prefilled)
+/* private keys never leave the service worker: get_state strips regular/memo/active keys
+   and reports only boolean flags memo/active, so the page can only tell whether a key is
+   stored, never its value */
+var account_has_key=function(acc,kind){
+	if(typeof acc === 'undefined' || null===acc){
+		return false;
+	}
+	if(typeof acc[kind] !== 'undefined'){//flag of the stripped state
+		return (true===acc[kind]);
+	}
+	if(typeof acc[kind+'_key'] !== 'undefined'){//full state (before get_state stripped it)
+		return (''!=acc[kind+'_key']);
+	}
+	return false;
+}
+
+var key_exist_mark=function(exist){
+	return (exist?' <span class="exist" title="'+ltmp_arr.form_key_exist+'">✔️</span>':'');
+}
+
+//account form, mode: 'add' (login editable) or 'edit' (login fixed, empty key inputs = keep stored keys)
 var account_form_html=function(mode,login){
-	let acc=(('edit'==mode && typeof users[login] !== 'undefined')?users[login]:{regular_key:'',memo_key:'',active_key:''});
+	let acc=(('edit'==mode && typeof users[login] !== 'undefined')?users[login]:{});
+	let edit=('edit'==mode);
+	let has_regular=edit;//an existing account always carries a regular key
+	let has_memo=(edit && account_has_key(acc,'memo'));
+	let has_active=(edit && account_has_key(acc,'active'));
 	let result='';
 	result+='<div class="account-form" data-mode="'+mode+'" data-login="'+('edit'==mode?login:'')+'">';
 	result+='<p><b>'+('edit'==mode?ltmp_arr.edit_account_title:ltmp_arr.add_account_title)+'</b></p>';
@@ -182,9 +206,12 @@ var account_form_html=function(mode,login){
 	else{
 		result+='<p><input type="text" autocomplete="off" class="login" value=""> &mdash; '+ltmp_arr.form_login+' <span class="red">*</span></p>';
 	}
-	result+='<p><input type="password" autocomplete="off" class="regular_key" value="'+acc['regular_key']+'"> &mdash; '+ltmp_arr.form_regular_key+' <span class="red">*</span></p>';
-	result+='<p><input type="password" autocomplete="off" class="memo_key" value="'+acc['memo_key']+'"> &mdash; '+ltmp_arr.form_memo_key+' (<span class="dotted" title="'+ltmp_arr.form_memo_key_descr+'">'+ltmp_arr.form_optional+'</span>)</p>';
-	result+='<p><input type="password" autocomplete="off" class="active_key" value="'+acc['active_key']+'"> &mdash; '+ltmp_arr.form_active_key+' (<span class="dotted" title="'+ltmp_arr.form_active_key_descr+'">'+ltmp_arr.form_optional+'</span>)</p>';
+	result+='<p><input type="password" autocomplete="off" class="regular_key" value=""> &mdash; '+ltmp_arr.form_regular_key+(edit?'':' <span class="red">*</span>')+key_exist_mark(has_regular)+'</p>';
+	result+='<p><input type="password" autocomplete="off" class="memo_key" value=""> &mdash; '+ltmp_arr.form_memo_key+' (<span class="dotted" title="'+ltmp_arr.form_memo_key_descr+'">'+ltmp_arr.form_optional+'</span>)'+key_exist_mark(has_memo)+'</p>';
+	result+='<p><input type="password" autocomplete="off" class="active_key" value=""> &mdash; '+ltmp_arr.form_active_key+' (<span class="dotted" title="'+ltmp_arr.form_active_key_descr+'">'+ltmp_arr.form_optional+'</span>)'+key_exist_mark(has_active)+'</p>';
+	if(edit){
+		result+='<p class="gray">'+ltmp_arr.form_key_keep+'</p>';
+	}
 	result+='<div class="error" style="color:red;"></div>';
 	result+='<p><input type="button" class="save-account" value="'+('edit'==mode?ltmp_arr.form_edit_caption:ltmp_arr.form_save_caption)+'">';
 	if('edit'==mode){
@@ -212,7 +239,9 @@ var save_account_action=function(){
 	let memo_key=form.find('.memo_key').val().trim();
 	let active_key=form.find('.active_key').val().trim();
 
-	let regular_valid=viz.auth.isWif(regular_key);
+	/* empty field = keep the stored key: background merges it back from its own state
+	   (the page never sees private keys), so only a filled field is validated */
+	let regular_valid=(('edit'==mode && ''==regular_key)?true:viz.auth.isWif(regular_key));
 	let memo_valid=(''==memo_key?true:viz.auth.isWif(memo_key));
 	let active_valid=(''==active_key?true:viz.auth.isWif(active_key));
 
@@ -223,7 +252,15 @@ var save_account_action=function(){
 	}
 
 	if(regular_valid && memo_valid && active_valid){
-		users[new_user]={'regular_key':regular_key,'memo_key':memo_key,'active_key':active_key};
+		let stored=(typeof users[new_user] !== 'undefined'?users[new_user]:{});
+		users[new_user]={
+			'regular_key':regular_key,
+			'memo_key':memo_key,
+			'active_key':active_key,
+			//keep the display flags, empty key above means "leave the stored one alone"
+			'memo':(''!=memo_key?true:account_has_key(stored,'memo')),
+			'active':(''!=active_key?true:account_has_key(stored,'active')),
+		};
 		if('edit'!=mode || ''==current_user){
 			current_user=new_user;
 		}
@@ -232,7 +269,15 @@ var save_account_action=function(){
 		}
 		save_state(function(){
 			ext_browser.runtime.sendMessage({reload_state:true});
-			main_app();
+			//re-read the state: background owns the keys and reports back what is actually stored
+			get_state(function(status){
+				if(status){
+					main_app();
+				}
+				else{
+					need_encode();
+				}
+			});
 		});
 	}
 	else{
@@ -264,8 +309,8 @@ function accounts_view(edit_login){
 			let acc=users[login];
 			result+='<div class="account-row'+(login==current_user?' current':'')+'" data-login="'+login+'">';
 			result+='<b>'+login+'</b>';
-			result+=(''==acc['memo_key']?' <span class="red dotted" title="'+ltmp_arr.empty_memo_title+'">&minus;memo</span>':' <span class="dashed" title="'+ltmp_arr.memo_title+'">+memo</span>');
-			result+=(''==acc['active_key']?' <span class="red dotted" title="'+ltmp_arr.empty_active_title+'">&minus;active</span>':' <span class="dashed" title="'+ltmp_arr.active_title+'">+active</span>');
+			result+=(!account_has_key(acc,'memo')?' <span class="red dotted" title="'+ltmp_arr.empty_memo_title+'">&minus;memo</span>':' <span class="dashed" title="'+ltmp_arr.memo_title+'">+memo</span>');
+			result+=(!account_has_key(acc,'active')?' <span class="red dotted" title="'+ltmp_arr.empty_active_title+'">&minus;active</span>':' <span class="dashed" title="'+ltmp_arr.active_title+'">+active</span>');
 			if(login==current_user){
 				result+=' <span class="current-account">&mdash; '+ltmp_arr.current_account_caption+'</span>';
 			}
@@ -523,8 +568,8 @@ function main_app(){
 	$('.info').html('<p>'+ltmp_arr.current_status+': <span class="status">&mdash;</span></p>');
 	if(''!=current_user){
 		$('.info .status').html('<span class="green">'+ltmp(ltmp_arr.status_used_account,{account:current_user})+'</span>'
-			+(!account['memo_key']?' <span class="red dotted" title="'+ltmp_arr.empty_memo_title+'">&minus;memo</span>':' <span class="dashed" title="'+ltmp_arr.memo_title+'">+memo</span>')
-			+(!account['active_key']?' <span class="red dotted" title="'+ltmp_arr.empty_active_title+'">&minus;active</span>':' <span class="dashed" title="'+ltmp_arr.active_title+'">+active</span>')
+			+(!account_has_key(account,'memo')?' <span class="red dotted" title="'+ltmp_arr.empty_memo_title+'">&minus;memo</span>':' <span class="dashed" title="'+ltmp_arr.memo_title+'">+memo</span>')
+			+(!account_has_key(account,'active')?' <span class="red dotted" title="'+ltmp_arr.empty_active_title+'">&minus;active</span>':' <span class="dashed" title="'+ltmp_arr.active_title+'">+active</span>')
 		);
 	}
 	else{

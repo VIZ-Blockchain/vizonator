@@ -36,8 +36,28 @@ window.__confirm=true;
 window.confirm=function(){return window.__confirm;};
 window.chrome={runtime:{lastError:null,sendMessage:function(msg,cb){
   cb=cb||function(){};
-  if(msg.get_state){ setTimeout(function(){cb({decoded:true,state:window.__state});},0); return; }
-  if(msg.save_state){ window.__state=msg.state; setTimeout(function(){cb(true);},0); return; }
+  // зеркалим настоящий background: приватные ключи НЕ покидают ядро расширения —
+  // get_state отдаёт состояние без ключей (только флаги memo/active), а save_state
+  // подставляет сохранённый ключ обратно, когда пришло пустое значение
+  if(msg.get_state){ setTimeout(function(){
+    var tmp=JSON.parse(JSON.stringify(window.__state));
+    for(var u in tmp.users){
+      tmp.users[u].memo=(typeof tmp.users[u].memo_key!=='undefined' && ''!=tmp.users[u].memo_key);
+      tmp.users[u].active=(typeof tmp.users[u].active_key!=='undefined' && ''!=tmp.users[u].active_key);
+      delete tmp.users[u].memo_key; delete tmp.users[u].active_key; delete tmp.users[u].regular_key;
+    }
+    cb({decoded:true,state:tmp});},0); return; }
+  if(msg.save_state){
+    var next=JSON.parse(JSON.stringify(msg.state));
+    for(var u2 in next.users){
+      var old=window.__state.users[u2];
+      ['regular_key','memo_key','active_key'].forEach(function(k){
+        if((typeof next.users[u2][k]==='undefined'||''==next.users[u2][k]) && old && typeof old[k]!=='undefined'){ next.users[u2][k]=old[k]; }
+        if(typeof next.users[u2][k]==='undefined'){ next.users[u2][k]=''; }
+      });
+      delete next.users[u2].memo; delete next.users[u2].active;
+    }
+    window.__state=next; setTimeout(function(){cb(true);},0); return; }
   setTimeout(function(){cb(true);},0);
 },getURL:function(p){return p;}},storage:{local:{get:function(k,cb){cb({});},set:function(o,cb){if(cb)cb();},remove:function(k,cb){if(cb)cb();}}}};
 `;
@@ -107,14 +127,34 @@ try {
   await sleep(400);
   check('переключение на другой аккаунт', (await rows()) === 'alpha*,beta', await rows());
 
+  // как при обычном открытии страницы: состояние перечитано из background (ключи вырезаны)
+  await evalJS(`new Promise(function(r){get_state(function(){main_app();r(1);});})`);
+  await sleep(200);
   await evalJS(`document.querySelector('.account-row[data-login="beta"] .edit-account').dispatchEvent(new MouseEvent('click',{bubbles:true}))`, false);
   await sleep(300);
   const editMode = await evalJS(`document.querySelector('.account-form').getAttribute('data-mode')+':'+document.querySelector('.account-form .login').value`);
   check('форма правки открылась с фиксированным логином', editMode === 'edit:beta', editMode);
-  await fillForm('beta', B.regular, C.memo, B.active);
-  const savedMemo = await evalJS(`window.__state.users['beta'].memo_key`);
-  check('правка ключа сохранена', savedMemo === C.memo);
+
+  // регрессия: в поля ключей писалось undefined (get_state их вырезает) —
+  // теперь поля пустые, а факт сохранённого ключа показан отметкой ✔️
+  const editVals = await evalJS(`(function(){var f=document.querySelector('.account-form');
+    return ['regular_key','memo_key','active_key'].map(function(c){return f.querySelector('.'+c).value;}).join('|');})()`);
+  check('поля ключей в правке пустые (не undefined)', editVals === '||', editVals);
+  const marks = await evalJS(`document.querySelectorAll('.account-form .exist').length`);
+  check('сохранённые ключи отмечены ✔️', marks === 3, String(marks));
+
+  // пустой regular = «оставить как есть», меняем только memo
+  await fillForm('beta', '', C.memo, '');
+  const savedBeta = await evalJS(`JSON.stringify(window.__state.users['beta'])`);
+  const beta = JSON.parse(savedBeta);
+  check('правка memo-ключа сохранена', beta.memo_key === C.memo, beta.memo_key);
+  check('пустой regular не затирает сохранённый ключ', beta.regular_key === B.regular, beta.regular_key);
+  check('пустой active не затирает сохранённый ключ', beta.active_key === B.active, beta.active_key);
   check('правка НЕ меняет текущий аккаунт', (await rows()) === 'alpha*,beta', await rows());
+
+  // бейджи строки аккаунта считаются по флагам, а не по вырезанным ключам
+  const badges = await evalJS(`document.querySelector('.account-row[data-login="beta"]').innerHTML`);
+  check('бейджи по флагам: +memo/+active', badges.indexOf('+memo') > -1 && badges.indexOf('+active') > -1, badges.replace(/<[^>]+>/g, ' ').trim());
 
   await evalJS(`document.querySelector('.account-row[data-login="beta"] .delete-account').dispatchEvent(new MouseEvent('click',{bubbles:true}))`, false);
   await sleep(400);

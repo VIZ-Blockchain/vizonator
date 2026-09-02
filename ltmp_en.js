@@ -37,6 +37,7 @@ var ltmp_en_arr={
 	form_active_key_short:'Private active key',
 	form_active_key_descr:'Needed for web3 operations (transfers, delegation)',
 	form_key_exist:'The key is saved',
+	form_key_keep:'Key fields are empty on purpose: private keys never leave the extension core. Leave a field empty to keep the saved key, fill it in to replace the key.',
 	form_save_caption:'Save account credentials',
 	form_edit_caption:'Save changes',
 	form_optional:'optional',
