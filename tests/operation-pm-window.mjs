@@ -67,7 +67,7 @@ const clickBtn = sel => evalJS(`document.querySelector('${sel}').dispatchEvent(n
 
 try {
   let target;
-  for (let i = 0; i < 40 && !target; i++) {
+  for (let i = 0; i < 100 && !target; i++) {
     try { const list = await (await fetch(`http://127.0.0.1:${DBG}/json`)).json(); target = list.find(t => t.type === 'page'); } catch (_) {}
     if (!target) await sleep(300);
   }
