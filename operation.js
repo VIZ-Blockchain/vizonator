@@ -45,6 +45,30 @@ var langs_arr={
 	'ru':'ru',
 };
 
+//Живая энергия аккаунта есть только у background. localStorage-полифилл наполняется
+//АСИНХРОННО из chrome.storage.local, поэтому на момент отрисовки слайдера кэш обычно ещё
+//пуст: лимит выходил 0, слайдер серый, выбрать нечего. Спрашиваем background напрямую,
+//как это уже делает popup.js; кэш остаётся фолбэком, если ответа нет.
+function load_account_energy(callback){
+	let done=false;
+	let finish=function(){
+		if(done){return;}
+		done=true;
+		callback();
+	};
+	try{
+		ext_browser.runtime.sendMessage({get_account_info:true},function(info){
+			if(info && typeof info.current_energy !== 'undefined'){
+				current_energy=info.current_energy;
+			}
+			finish();
+		});
+	}
+	catch(e){
+		finish();
+	}
+}
+
 function get_state(callback){
 	if(typeof callback === 'undefined'){callback=function(){};}
 	ext_browser.runtime.sendMessage({get_state:true},function(response){
@@ -76,7 +100,9 @@ function get_state(callback){
 			if(typeof localStorage['current_energy'] !== 'undefined'){
 				current_energy=localStorage['current_energy'];
 			}
-			callback(true);
+			load_account_energy(function(){
+				callback(true);
+			});
 		}
 		else{
 			if(typeof localStorage['lang'] !== 'undefined'){
