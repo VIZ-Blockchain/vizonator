@@ -1,0 +1,35 @@
+# Пока OAuth-приложение в статусе "Testing", Google убивает refresh-токен через 7 дней.
+# Пусть об этом сообщает канарейка раз в неделю, а не упавший релиз: красный прогон в
+# понедельник дешевле, чем версия, доехавшая только до одного магазина.
+# Осторожно: GitHub отключает cron-прогоны после 60 дней без активности в репозитории —
+# если канарейка молчит месяцами, проверь, не выключена ли она.
+name: Chrome token check
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  token:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Can we still get an access token?
+        env:
+          CHROME_CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
+          CHROME_CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
+          CHROME_REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+        run: |
+          RESP=$(curl -s -X POST "https://oauth2.googleapis.com/token" \
+            -d "client_id=$CHROME_CLIENT_ID" \
+            -d "client_secret=$CHROME_CLIENT_SECRET" \
+            -d "refresh_token=$CHROME_REFRESH_TOKEN" \
+            -d "grant_type=refresh_token")
+          # Печатаем только вердикт: в ответе лежит живой access-токен.
+          if echo "$RESP" | grep -q '"access_token"'; then
+            echo "Chrome refresh token is alive."
+            exit 0
+          fi
+          ERR=$(echo "$RESP" | grep -o '"error"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
+          echo "::error::Chrome refresh token is dead (${ERR:-unknown}). Mint a new one in the OAuth Playground (scope https://www.googleapis.com/auth/chromewebstore) and update the CHROME_REFRESH_TOKEN secret. Permanent fix: publish the OAuth app so it leaves the Testing status."
+          exit 1

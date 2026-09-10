@@ -52,7 +52,34 @@ ACCESS_RESP=$(curl -s -X POST "https://oauth2.googleapis.com/token" \
   -d "grant_type=refresh_token")
 
 ACCESS_TOKEN=$(echo "$ACCESS_RESP" | grep -o '"access_token"[[:space:]]*:[[:space:]]*"[^"]*"' | grep -o '"[^"]*"$' | cut -d'"' -f2)
-: "${ACCESS_TOKEN:?Failed to get access token: $ACCESS_RESP}"
+
+if [ -z "$ACCESS_TOKEN" ]; then
+  echo "Failed to get access token: $ACCESS_RESP" >&2
+  # invalid_grant here almost always means the weekly expiry, not a broken secret:
+  # Google kills refresh tokens after 7 days while the OAuth consent screen sits in
+  # "Testing". Spell the fix out — the raw JSON alone costs an hour of guessing.
+  case "$ACCESS_RESP" in
+    *invalid_grant*)
+      cat >&2 <<'HINT'
+
+The refresh token is dead. While the OAuth consent screen sits in "Testing",
+Google expires refresh tokens after 7 days — nobody touched the secret.
+
+Fix (2 minutes):
+  1. https://developers.google.com/oauthplayground/ -> gear -> use your own OAuth credentials
+  2. scope: https://www.googleapis.com/auth/chromewebstore -> Authorize APIs
+  3. Exchange authorization code for tokens -> copy the refresh token
+  4. Repo Settings -> Secrets -> Actions -> CHROME_REFRESH_TOKEN
+  5. Re-run the failed job, or: gh workflow run publish.yml -f tag=<vX.YZ>
+
+Permanent fix: publish the OAuth app (Google Cloud Console -> OAuth consent screen /
+Audience -> Publish app). Verification may stay pending: the 7-day expiry is tied to
+the "Testing" publishing status, not to verification.
+HINT
+      ;;
+  esac
+  exit 2
+fi
 
 echo "Uploading to Chrome Web Store..."
 UPLOAD_RESP=$(curl -s -X PUT \
