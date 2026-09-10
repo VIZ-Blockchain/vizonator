@@ -31,6 +31,7 @@ var users={};
 
 var state={};
 var current_energy=0;
+var current_balance='0.000';
 
 var ltmp_arr={};
 var available_langs={
@@ -60,6 +61,9 @@ function load_account_energy(callback){
 		ext_browser.runtime.sendMessage({get_account_info:true},function(info){
 			if(info && typeof info.current_energy !== 'undefined'){
 				current_energy=info.current_energy;
+			}
+			if(info && typeof info.current_balance !== 'undefined'){
+				current_balance=info.current_balance;
 			}
 			finish();
 		});
@@ -299,6 +303,77 @@ window.onbeforeunload=function(){
 	}
 }
 
+//Разбор суммы перевода повторяет popup.js: чистим ввод, запятую считаем десятичным
+//разделителем, второй разделитель и ноль отвергаем, сверяем с балансом. Возвращает
+//строку "N.NNN VIZ" либо false. show_error=false — тихая проверка (для живого ввода).
+function check_transfer_amount(show_error){
+	let field=$('.amount_input');
+	if(0==field.length){
+		return false;
+	}
+	let error_box=$('.amount_error');
+	let fail=function(message){
+		field.addClass('error');
+		if(show_error){
+			error_box.html(message);
+		}
+		return false;
+	};
+	let raw=(''+field.val()).trim().replace(/[^0-9\,\.]/g,'');
+	field.val(raw);
+	field.removeClass('error');
+	error_box.html('');
+	if(''==raw){
+		return show_error?fail(ltmp_arr.default_check_amount):false;
+	}
+	if(-1==raw.indexOf('.')){
+		if(2<raw.split(',').length){
+			return fail(ltmp_arr.default_check_amount);
+		}
+		raw=raw.split(',').join('.');
+	}
+	else{
+		raw=raw.split(',').join('');
+	}
+	if(2<raw.split('.').length){
+		return fail(ltmp_arr.default_check_amount);
+	}
+	let value=parseFloat(raw);
+	if(isNaN(value) || value<=0){
+		return fail(ltmp_arr.default_check_amount);
+	}
+	if(value>parseFloat(current_balance)){
+		return fail(ltmp_arr.default_insufficient_funds);
+	}
+	return ''+value.toFixed(3)+' VIZ';
+}
+
+function bind_amount_input(){
+	let field=$('.amount_input');
+	if(0==field.length){
+		return;
+	}
+	field.off('input');
+	field.on('input',function(){
+		check_transfer_amount(false);
+	});
+	field.off('keydown');
+	field.on('keydown',function(e){
+		if(13==e.keyCode){
+			$('.approve-action').click();
+		}
+	});
+	focus_amount_input();
+}
+
+//cash.js (в отличие от jQuery) метода .focus() не имеет — фокусируем сам узел.
+function focus_amount_input(){
+	let node=$('.amount_input')[0];
+	if(node){
+		node.focus();
+	}
+}
+
 function bind_actions(){
 	$('.refuse-action').off('click');
 	$('.refuse-action').on('click',function(){
@@ -324,6 +399,18 @@ function bind_actions(){
 
 			if('award'==action.operation){
 				action.energy=energy;
+			}
+
+			if($('.amount_input').length>0){
+				//Сумму ввёл пользователь: не одобряем, пока она не валидна.
+				let checked_amount=check_transfer_amount(true);
+				if(false===checked_amount){
+					$('.approve-action').removeClass('disabled');
+					$('.refuse-action').removeClass('disabled');
+					focus_amount_input();
+					return;
+				}
+				action.amount=checked_amount;
 			}
 
 			if($('.trust input[name="save"]').prop("checked")){
@@ -495,7 +582,16 @@ function action_info(){
 				}
 			}
 			result+='<p class="orange">'+ltmp_arr.origin_caption+': '+action.origin+'</p>';
-			result+='<p class="blue">'+ltmp_arr.amount_caption+': <span class="">'+escape_html(action.amount.replace('VIZ','Ƶ'))+'</span></p>';
+			if(false===action.amount || ''===action.amount){
+				//Страница не назвала сумму — пользователь вводит её сам.
+				result+='<p class="blue">'+ltmp_arr.amount_caption+':</p>';
+				result+='<p><input type="text" class="amount_input" name="transfer-amount" autocomplete="off" inputmode="decimal" placeholder="0.000 Ƶ"></p>';
+				result+='<p class="gray amount_balance">'+ltmp_arr.balance_caption+': '+escape_html(current_balance)+' Ƶ</p>';
+				result+='<p class="red amount_error"></p>';
+			}
+			else{
+				result+='<p class="blue">'+ltmp_arr.amount_caption+': <span class="">'+escape_html(action.amount.replace('VIZ','Ƶ'))+'</span></p>';
+			}
 			result+='</div>';
 		}
 		if('transfer_to_vesting'==action.operation){
@@ -699,6 +795,7 @@ function action_info(){
 			select_energy_view(selected_energy);
 		}
 		bind_actions();
+		bind_amount_input();
 	}
 	else{
 		$('.action').html(ltmp_arr.operation_error);

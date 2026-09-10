@@ -605,6 +605,19 @@ function save_state(callback){
 	}
 }
 
+/* Сумма перевода: строго "N.NNN VIZ" и строго больше нуля. Проверяем в background,
+   потому что сумму мог ввести пользователь в окне подтверждения — присланному из окна
+   значению доверять нельзя, как и любому другому приходящему сообщению. */
+function valid_transfer_amount(amount){
+	if(typeof amount !== 'string'){
+		return false;
+	}
+	if(!(/^[0-9]+\.[0-9]{3} VIZ$/).test(amount)){
+		return false;
+	}
+	return parseFloat(amount)>0;
+}
+
 /* Common functions for encryption */
 function hexStringToUint8Array(hexString) {
 	if (hexString.length % 2 != 0)
@@ -1121,18 +1134,26 @@ function inpage_action(request){
 	}
 	else
 	if('transfer'==request.operation){
+		let send_transfer_error=function(operation_error){
+			let response={'error':operation_error,'result':response_result}
+			ext_browser.tabs.get(request.tab_id,function(tab){
+				if(ext_browser.runtime.lastError){
+					console.log(ext_browser.runtime.lastError.message);
+				}
+				else{
+					ext_browser.tabs.sendMessage(request.tab_id,{event:request.event,data:response});
+				}
+			});
+		};
+		//Сумму мог ввести пользователь в окне подтверждения (страница её не указала),
+		//поэтому проверяем формат здесь и ДО обращения к цепи: присланному из окна
+		//значению доверять нельзя, а на негодной сумме сеть дёргать незачем.
+		if(!valid_transfer_amount(request.amount)){
+			send_transfer_error('amount_error');
+			return;
+		}
 		viz.api.getAccount(request.to,'',function(err,account_response){
-			let send_error=function(operation_error){
-				let response={'error':operation_error,'result':response_result}
-				ext_browser.tabs.get(request.tab_id,function(tab){
-					if(ext_browser.runtime.lastError){
-						console.log(ext_browser.runtime.lastError.message);
-					}
-					else{
-						ext_browser.tabs.sendMessage(request.tab_id,{event:request.event,data:response});
-					}
-				});
-			};
+			let send_error=send_transfer_error;
 			if(err){
 				send_error('recipient_error');
 				return;
@@ -2651,6 +2672,12 @@ function handle_message(request,sender,sendResponse){
 										ext_browser.tabs.sendMessage(tab_id,{event:request.event,data:response});
 									}
 								}
+								//Сумма не указана страницей — её вводит пользователь в окне
+								//подтверждения (как энергию у award). Трастлайн такое НЕ
+								//автоодобряет: одобрять нечего, пока сумма не названа.
+								if(false===request.amount){
+									trustline=false;
+								}
 								action_request={
 									tab_id,
 									origin,
@@ -2660,7 +2687,7 @@ function handle_message(request,sender,sendResponse){
 									event:request.event,
 
 									to:request.to,
-									amount:request.amount,
+									amount:(false===request.amount?false:request.amount),
 									memo:request.memo,
 
 									force_memo_encoding:request.force_memo_encoding,

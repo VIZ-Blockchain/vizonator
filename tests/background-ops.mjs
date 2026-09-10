@@ -175,6 +175,15 @@ cases.push([
 	{operation: 'pm_place_bet', pm_params: {market_id: 1, side: 1, outcome_index: 0}, tab_id: 1, event: ++pm_event},
 	false, 'empty amount'
 ]);
+/* the amount may be typed by the user in the confirmation window, so background must not
+   trust what comes back: malformed or zero is refused before the chain is touched */
+for (const [label, amount] of [['false', false], ['malformed', '1,5 VIZ'], ['zero', '0.000 VIZ'], ['bare number', '1.5']]) {
+	cases.push([
+		'inpage transfer, ' + label + ' amount', 'inpage',
+		{operation: 'transfer', to: 'target', amount, memo: '', force_memo_encoding: false, tab_id: 1, event: ++pm_event},
+		false, 'amount_error'
+	]);
+}
 /* a regular-authority operation must not be signed when only the active key is present */
 cases.push([
 	'inpage pm_dispute_vote without regular key', 'inpage',

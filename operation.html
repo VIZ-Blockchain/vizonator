@@ -302,6 +302,45 @@ input[type=text]:focus,input[type=password]:focus{
 .decode_password.error{
 	border:1px solid #ff1010 !important;
 }
+.amount_input{
+	box-sizing:border-box;
+	width:100%;
+	margin:0;
+	font-size:18px;
+	font-weight:bold;
+	text-align:center;
+	color:#0045b3;
+	background:#fff;
+}
+.amount_input::placeholder{
+	font-weight:normal;
+	color:#bbb;
+}
+.amount_input.error{
+	border:1px solid #ff1010 !important;
+	box-shadow:0 0 0 3px #ff101020;
+}
+body.dark .amount_input{
+	color:#6ea8ff;
+	background:#1c1c1c;
+	border:1px solid #555;
+}
+body.dark .amount_input::placeholder{
+	color:#666;
+}
+.amount_balance{
+	margin-top:6px;
+	text-align:center;
+	font-size:12px;
+}
+.amount_error{
+	margin-top:6px;
+	text-align:center;
+	font-size:12px;
+}
+.amount_error:empty{
+	display:none;
+}
 .big-icon{
 	display:inline-block;
 	vertical-align:middle;

@@ -186,12 +186,9 @@ document.addEventListener('vizonator',function(event){
 			error='empty to';
 			document.dispatchEvent(new CustomEvent('vizonator_'+data_obj.event,{detail:JSON.stringify({'error':error,'result':result})}));
 		}
-		else
-		if(typeof data.amount == 'undefined'){
-			error='empty amount';
-			document.dispatchEvent(new CustomEvent('vizonator_'+data_obj.event,{detail:JSON.stringify({'error':error,'result':result})}));
-		}
 		else{
+			//Сумма необязательна: если страница её не указала, пользователь вводит сумму сам
+			//в окне подтверждения (та же схема, что у award с энергией).
 			ext_browser.runtime.sendMessage({
 				inpage:true,
 				operation:'transfer',
@@ -199,7 +196,7 @@ document.addEventListener('vizonator',function(event){
 				event:data_obj.event,
 
 				to:data.to,
-				amount:data.amount,
+				amount:(('undefined' == typeof data.amount || '' === data.amount)?false:data.amount),
 				memo:('undefined' == typeof data.memo?'':data.memo),
 
 				force_memo_encoding:('undefined' == typeof data.force_memo_encoding?false:data.force_memo_encoding),
