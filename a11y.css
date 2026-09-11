@@ -1,0 +1,41 @@
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible{
+	outline:3px solid #111 !important;
+	outline-offset:3px;
+	box-shadow:0 0 0 5px #ffbf47 !important;
+}
+body.dark a:focus-visible,
+body.dark button:focus-visible,
+body.dark input:focus-visible,
+body.dark select:focus-visible,
+body.dark textarea:focus-visible,
+body.dark [tabindex]:focus-visible{
+	outline-color:#fff !important;
+}
+.modal .switch input{
+	position:absolute !important;
+	width:1px !important;
+	height:1px !important;
+	padding:0 !important;
+	margin:-1px !important;
+	overflow:hidden !important;
+	clip:rect(0,0,0,0) !important;
+	clip-path:inset(50%) !important;
+	white-space:nowrap !important;
+	border:0 !important;
+}
+.modal .switch input:focus-visible + .slider{
+	outline:3px solid #111;
+	outline-offset:3px;
+	box-shadow:0 0 0 5px #ffbf47;
+}
+body.dark .modal .switch input:focus-visible + .slider{
+	outline-color:#fff;
+}
+.select_energy[role="slider"]:focus-visible{
+	border-radius:4px;
+}

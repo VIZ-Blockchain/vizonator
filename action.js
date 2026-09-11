@@ -347,8 +347,8 @@ function action_info(){
 			result+='<p><div class="select_energy" data-min="'+settings.energy_step+'" data-default="'+settings.award_energy+'" data-step="'+settings.energy_step+'" data-max="'+(Math.min(settings.energy_step*100,10000))+'" data-limit="'+current_energy+'"></div></p>';
 			result+='<div class="text-right trust"><label class="unselectable"><input type="checkbox" name="save"> &mdash; '+ltmp_arr.save_rule_caption+'</label></div>';
 			result+='<div class="text-right">';
-			result+='<a class="refuse-action button negative unselectable"><span class="icon"><img src="images/cross.svg"></span> '+ltmp_arr.refuse_caption+'</a>';
-			result+='<a class="award-action button unselectable"><span class="icon"><img src="images/check.svg"></span> '+ltmp_arr.award_action+'</a>';
+			result+='<a role="button" tabindex="0" class="refuse-action button negative unselectable"><span class="icon"><img src="images/cross.svg" alt=""></span> '+ltmp_arr.refuse_caption+'</a>';
+			result+='<a role="button" tabindex="0" class="award-action button unselectable"><span class="icon"><img src="images/check.svg" alt=""></span> '+ltmp_arr.award_action+'</a>';
 			result+='</div>';
 		}
 		$('.action').html(result);
