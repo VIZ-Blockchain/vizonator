@@ -23,6 +23,7 @@ const waitFor=async(expr)=>{for(let i=0;i<30;i++){if(await evalJS(expr))return t
 const STUB=`
 window.__sent=[];
 window.__state={users:{alpha:{regular_key:'r',memo_key:'m',active_key:'a'}},current_user:'alpha',settings:{energy_step:20,award_energy:200,dark:false,lang:'ru'},rules:{},encoded:false,decoded:true};
+window.fetch=function(){return Promise.resolve({ok:true,status:200,json:function(){return Promise.resolve({ok:true,paused:false,chains:{GRAM:{status:'OK'},SOLANA:{status:'OK'}}});}});};
 window.chrome={runtime:{lastError:null,sendMessage:function(msg,cb){cb=cb||function(){};window.__sent.push(msg);if(msg.get_state){setTimeout(function(){cb({decoded:true,state:window.__state});},0);return;}if(msg.get_account_info){setTimeout(function(){cb({current_energy:8000,current_shares:1000,current_balance:'100.000'});},0);return;}setTimeout(function(){cb(false);},0);},getURL:function(p){return p;}},windows:{WINDOW_ID_CURRENT:-2,update:function(){}},storage:{local:{get:function(k,cb){cb({lang:'ru'});},set:function(o,cb){if(cb)cb();},remove:function(k,cb){if(cb)cb();}}}};
 `;
 const award={operation:'award',operation_type:['content','award','regular'],origin:'https://example.com',event:1,id:1,receiver:'bob',memo:'hello',custom_sequence:0,beneficiaries:[],energy:false};
@@ -76,6 +77,19 @@ try{
   await evalJS(`show_wallet_form();true`);await sleep(150);
   check('TON gateway template is selected by default',await evalJS(`(function(){var s=document.querySelector('[name="transfer-template"]');var a=document.querySelector('[name="form-account"]');var m=document.querySelector('[name="form-memo"]');return s&&s.value==='ton'&&a&&a.value==='gram.gate'&&m&&m.placeholder===ltmp_arr.transfer_template_ton_memo;})()`));
   check('memo encryption is disabled for TON gateway',await evalJS(`(function(){var e=document.querySelector('[name="encode-memo"]');return !e||e.disabled;})()`));
+  await evalJS(`apply_transfer_gateway_status({ok:true,paused:false,chains:{GRAM:{status:'OK'},SOLANA:{status:'PAUSED'}}});true`);await sleep(50);
+  check('unavailable Solana gateway template is hidden',await evalJS(`(function(){var o=document.querySelector('option[value="solana"]');return o.hidden&&o.disabled&&document.querySelector('[name="transfer-template"]').value==='ton';})()`));
+  await evalJS(`apply_transfer_gateway_status({ok:true,paused:true,chains:{GRAM:{status:'OK'},SOLANA:{status:'OK'}}});true`);await sleep(50);
+  check('global gateway pause hides both gateway templates',await evalJS(`(function(){var t=document.querySelector('option[value="ton"]');var s=document.querySelector('option[value="solana"]');return t.hidden&&t.disabled&&s.hidden&&s.disabled&&document.querySelector('[name="transfer-template"]').value==='regular'&&document.querySelector('.transfer-template-hint').textContent===ltmp_arr.transfer_gateway_unavailable;})()`));
+  await evalJS(`apply_transfer_gateway_status({ok:true,paused:false,chains:{GRAM:{status:'OK'},SOLANA:{status:'OK'}}});true`);await sleep(50);
+  await evalJS(`(function(){var s=document.querySelector('[name="transfer-template"]');s.value='solana';s.dispatchEvent(new Event('change',{bubbles:true}));})()`);await sleep(50);
+  check('Solana gateway template fills the official account',await evalJS(`(function(){var a=document.querySelector('[name="form-account"]');var m=document.querySelector('[name="form-memo"]');var e=document.querySelector('[name="encode-memo"]');return a.value==='solana.gate'&&m.placeholder===ltmp_arr.transfer_template_solana_memo&&(!e||e.disabled);})()`));
+  await evalJS(`document.querySelector('.transfer-action').click();true`);await sleep(50);
+  check('Solana gateway requires a plain address memo',await evalJS(`document.querySelector('.error-caption').textContent===ltmp_arr.transfer_template_solana_memo_error&&document.activeElement===document.querySelector('[name="form-memo"]')`));
+  await evalJS(`(function(){document.querySelector('[name="form-memo"]').value='not-a-solana-address';document.querySelector('.transfer-action').click();})()`);await sleep(50);
+  check('Solana gateway rejects malformed addresses',await evalJS(`document.querySelector('.error-caption').textContent===ltmp_arr.transfer_template_solana_memo_error&&!window.__sent.some(function(item){return item.operation==='transfer'&&item.to==='solana.gate';})`));
+  await evalJS(`(function(){document.querySelector('[name="form-amount"]').value='1';document.querySelector('[name="form-memo"]').value='So11111111111111111111111111111111111111112';document.querySelector('.transfer-action').click();})()`);await sleep(100);
+  check('Solana template sends plain address memo to solana.gate',await evalJS(`(function(){var m=window.__sent.filter(function(item){return item.operation==='transfer';}).pop();return m&&m.to==='solana.gate'&&m.memo==='So11111111111111111111111111111111111111112'&&m.force_memo_encoding===false;})()`));
   await evalJS(`(function(){var s=document.querySelector('[name="transfer-template"]');s.value='regular';s.dispatchEvent(new Event('change',{bubbles:true}));})()`);await sleep(50);
   check('regular transfer template clears gateway fields',await evalJS(`document.querySelector('[name="form-account"]').value===''&&document.querySelector('[name="form-memo"]').value===''`));
   await evalJS(`(function(){window.prompt=function(){return 'Мой <шаблон>';};document.querySelector('[name="form-account"]').value='friend';document.querySelector('[name="form-memo"]').value='hello';document.querySelector('.transfer-template-save').click();})()`);await sleep(50);
