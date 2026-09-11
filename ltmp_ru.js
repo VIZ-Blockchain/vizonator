@@ -139,6 +139,12 @@ var ltmp_ru_arr={
 	transfer_template_regular_hint:'Укажите аккаунт VIZ, сумму и при необходимости заметку.',
 	transfer_template_ton_memo:'TON-адрес получателя',
 	transfer_template_ton_memo_error:'Для перевода через gram.gate укажите TON-адрес в поле заметки без префикса #.',
+	transfer_template_custom_hint:'Пользовательский шаблон заполнил получателя и заметку. Проверьте оба поля перед отправкой.',
+	transfer_template_save:'Сохранить свой шаблон',
+	transfer_template_remove:'Удалить выбранный шаблон',
+	transfer_template_name_prompt:'Название нового шаблона',
+	transfer_template_saved:'Шаблон сохранён локально.',
+	transfer_template_removed:'Шаблон удалён.',
 	transfer_action:'Отправить',
 
 	award_form_account:'Получатель',

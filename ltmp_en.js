@@ -139,6 +139,12 @@ var ltmp_en_arr={
 	transfer_template_regular_hint:'Enter a VIZ account, amount and an optional memo.',
 	transfer_template_ton_memo:'Recipient TON address',
 	transfer_template_ton_memo_error:'For a transfer through gram.gate, enter the TON address in the memo field without the # prefix.',
+	transfer_template_custom_hint:'The custom template filled the recipient and memo. Check both fields before sending.',
+	transfer_template_save:'Save custom template',
+	transfer_template_remove:'Delete selected template',
+	transfer_template_name_prompt:'New template name',
+	transfer_template_saved:'Template saved locally.',
+	transfer_template_removed:'Template deleted.',
 	transfer_action:'Send',
 
 	award_form_account:'Recipient',

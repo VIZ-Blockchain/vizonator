@@ -936,19 +936,72 @@ function show_award_form(){
 	$('.close-modal-action').on('click',close_modal_action);
 }
 
+function read_transfer_templates(){
+	if(typeof localStorage['viz_transfer_templates'] === 'undefined'){
+		return [];
+	}
+	try{
+		let templates=JSON.parse(localStorage['viz_transfer_templates']);
+		if(!Array.isArray(templates)){
+			return [];
+		}
+		return templates.filter(function(item){
+			return item && ('string'==typeof item.name) && ('string'==typeof item.account) && ('string'==typeof item.memo);
+		});
+	}
+	catch(e){
+		return [];
+	}
+}
+
+function write_transfer_templates(templates){
+	localStorage['viz_transfer_templates']=JSON.stringify(templates);
+}
+
+function render_custom_transfer_template_options(){
+	let select=$('.modal .content select[name=transfer-template]')[0];
+	if(!select){
+		return;
+	}
+	Array.from(select.querySelectorAll('option[data-custom]')).forEach(function(option){
+		option.remove();
+	});
+	read_transfer_templates().forEach(function(template,index){
+		let option=document.createElement('option');
+		option.value='custom-'+index;
+		option.textContent=template.name;
+		option.dataset.custom='true';
+		option.dataset.account=template.account;
+		option.dataset.memo=template.memo;
+		select.appendChild(option);
+	});
+}
+
 function apply_transfer_template(){
 	let page=$('.modal .content');
-	let template=page.find('select[name=transfer-template]').val();
+	let select=page.find('select[name=transfer-template]')[0];
+	let template=select ? select.value : '';
+	let option=select ? select.options[select.selectedIndex] : false;
 	let account_input=page.find('input[name=form-account]');
 	let memo_input=page.find('input[name=form-memo]');
 	let encode_input=page.find('input[name=encode-memo]');
 	let hint=page.find('.transfer-template-hint');
+	let remove_button=page.find('.transfer-template-remove');
 
 	if('ton'==template){
 		account_input.val('gram.gate');
 		memo_input.val('').attr('placeholder',ltmp_arr.transfer_template_ton_memo);
 		encode_input.prop('checked',false).prop('disabled',true);
 		hint.html(ltmp_arr.transfer_template_ton_hint);
+	}
+	else
+	if(0==template.indexOf('custom-') && option){
+		let custom_account=option.dataset.account || '';
+		let is_ton_gateway='gram.gate'==custom_account;
+		account_input.val(custom_account);
+		memo_input.val(option.dataset.memo || '').attr('placeholder',is_ton_gateway ? ltmp_arr.transfer_template_ton_memo : ltmp_arr.transfer_form_memo);
+		encode_input.prop('checked',false).prop('disabled',is_ton_gateway);
+		hint.html(is_ton_gateway ? ltmp_arr.transfer_template_ton_hint : ltmp_arr.transfer_template_custom_hint);
 	}
 	else{
 		if('gram.gate'==account_input.val()){
@@ -958,6 +1011,57 @@ function apply_transfer_template(){
 		encode_input.prop('disabled',false);
 		hint.html(ltmp_arr.transfer_template_regular_hint);
 	}
+	remove_button.prop('disabled',0!=template.indexOf('custom-'));
+}
+
+function save_transfer_template(){
+	let page=$('.modal .content');
+	let account_value=page.find('input[name=form-account]').val().toLowerCase().trim();
+	let memo_value=page.find('input[name=form-memo]').val().trim();
+	if(''==account_value){
+		page.find('input[name=form-account]')[0].focus();
+		page.find('.error-caption').html(ltmp_arr.default_recipient_error);
+		return;
+	}
+	let name=window.prompt(ltmp_arr.transfer_template_name_prompt,'');
+	if(null===name || ''==name.trim()){
+		return;
+	}
+	name=name.trim();
+	let templates=read_transfer_templates();
+	let existing=templates.findIndex(function(item){return item.name==name;});
+	let item={name:name,account:account_value,memo:memo_value};
+	if(-1==existing){
+		templates.push(item);
+	}
+	else{
+		templates[existing]=item;
+	}
+	write_transfer_templates(templates);
+	render_custom_transfer_template_options();
+	let select=page.find('select[name=transfer-template]');
+	select.val('custom-'+(-1==existing ? templates.length-1 : existing));
+	apply_transfer_template();
+	page.find('.success-caption').html(ltmp_arr.transfer_template_saved);
+}
+
+function remove_transfer_template(){
+	let page=$('.modal .content');
+	let select=page.find('select[name=transfer-template]');
+	let value=select.val();
+	if(0!=value.indexOf('custom-')){
+		return;
+	}
+	let index=parseInt(value.substring(7));
+	let templates=read_transfer_templates();
+	if(index>=0 && index<templates.length){
+		templates.splice(index,1);
+		write_transfer_templates(templates);
+	}
+	render_custom_transfer_template_options();
+	select.val('regular');
+	apply_transfer_template();
+	page.find('.success-caption').html(ltmp_arr.transfer_template_removed);
 }
 
 function transfer_action(){
@@ -1113,14 +1217,21 @@ function show_wallet_form(){
 	form_html+='</div>';
 	form_html+='<div class="error-caption red"></div>';
 	form_html+='<div class="success-caption green"></div>';
+	form_html+='<button type="button" class="transfer-template-save button wide">'+ltmp_arr.transfer_template_save+'</button>';
+	form_html+='<button type="button" class="transfer-template-remove button wide" disabled>'+ltmp_arr.transfer_template_remove+'</button>';
 	form_html+='<div class="button-space"></div>';
 	form_html+='<div class="footer-button"><input type="button" class="transfer-action wide" value="'+ltmp_arr.transfer_action+'"></div>';
 
 	$('.modal .content').html(form_html);
 
+	render_custom_transfer_template_options();
 	$('.modal .content select[name=transfer-template]')[0].focus();
 	$('.modal .content select[name=transfer-template]').off('change',apply_transfer_template);
 	$('.modal .content select[name=transfer-template]').on('change',apply_transfer_template);
+	$('.transfer-template-save').off('click',save_transfer_template);
+	$('.transfer-template-save').on('click',save_transfer_template);
+	$('.transfer-template-remove').off('click',remove_transfer_template);
+	$('.transfer-template-remove').on('click',remove_transfer_template);
 
 	$('.transfer-action').off('click',transfer_action);
 	$('.transfer-action').on('click',transfer_action);
