@@ -132,6 +132,13 @@ var ltmp_ru_arr={
 	transfer_form_account:'Получатель',
 	transfer_form_memo:'Заметка',
 	transfer_form_encode_memo:'Зашифровать',
+	transfer_template_caption:'Шаблон перевода',
+	transfer_template_ton:'VIZ в TON через gateway.viz.cx',
+	transfer_template_regular:'Обычный перевод VIZ',
+	transfer_template_ton_hint:'Получатель gram.gate заполнен автоматически. Введите TON-адрес в поле заметки без префиксов и дополнительных символов.',
+	transfer_template_regular_hint:'Укажите аккаунт VIZ, сумму и при необходимости заметку.',
+	transfer_template_ton_memo:'TON-адрес получателя',
+	transfer_template_ton_memo_error:'Для перевода через gram.gate укажите TON-адрес в поле заметки без префикса #.',
 	transfer_action:'Отправить',
 
 	award_form_account:'Получатель',

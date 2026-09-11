@@ -132,6 +132,13 @@ var ltmp_en_arr={
 	transfer_form_account:'Recipient',
 	transfer_form_memo:'Memo',
 	transfer_form_encode_memo:'Encrypt',
+	transfer_template_caption:'Transfer template',
+	transfer_template_ton:'VIZ to TON via gateway.viz.cx',
+	transfer_template_regular:'Regular VIZ transfer',
+	transfer_template_ton_hint:'The gram.gate recipient is filled automatically. Enter the TON address in the memo field without prefixes or extra characters.',
+	transfer_template_regular_hint:'Enter a VIZ account, amount and an optional memo.',
+	transfer_template_ton_memo:'Recipient TON address',
+	transfer_template_ton_memo_error:'For a transfer through gram.gate, enter the TON address in the memo field without the # prefix.',
 	transfer_action:'Send',
 
 	award_form_account:'Recipient',

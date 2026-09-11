@@ -72,6 +72,16 @@ try{
   await evalJS(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));true`);await sleep(150);
   check('Escape closes modal',await evalJS(`!document.querySelector('.modal')`));
   check('focus returns to modal trigger',await evalJS(`document.activeElement===document.querySelector('.accounts-list-action')`));
+
+  await evalJS(`show_wallet_form();true`);await sleep(150);
+  check('TON gateway template is selected by default',await evalJS(`(function(){var s=document.querySelector('[name="transfer-template"]');var a=document.querySelector('[name="form-account"]');var m=document.querySelector('[name="form-memo"]');return s&&s.value==='ton'&&a&&a.value==='gram.gate'&&m&&m.placeholder===ltmp_arr.transfer_template_ton_memo;})()`));
+  check('memo encryption is disabled for TON gateway',await evalJS(`(function(){var e=document.querySelector('[name="encode-memo"]');return !e||e.disabled;})()`));
+  await evalJS(`(function(){var s=document.querySelector('[name="transfer-template"]');s.value='regular';s.dispatchEvent(new Event('change',{bubbles:true}));})()`);await sleep(50);
+  check('regular transfer template clears gateway fields',await evalJS(`document.querySelector('[name="form-account"]').value===''&&document.querySelector('[name="form-memo"]').value===''`));
+  await evalJS(`(function(){var s=document.querySelector('[name="transfer-template"]');s.value='ton';s.dispatchEvent(new Event('change',{bubbles:true}));document.querySelector('.transfer-action').click();})()`);await sleep(50);
+  check('TON gateway requires an unencrypted address memo',await evalJS(`document.querySelector('.error-caption').textContent===ltmp_arr.transfer_template_ton_memo_error&&document.activeElement===document.querySelector('[name="form-memo"]')`));
+  await evalJS(`(function(){document.querySelector('[name="form-amount"]').value='1';document.querySelector('[name="form-memo"]').value='UQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';document.querySelector('.transfer-action').click();})()`);await sleep(100);
+  check('TON template sends plain address memo to gram.gate',await evalJS(`(function(){var m=window.__sent.filter(function(item){return item.operation==='transfer';}).pop();return m&&m.to==='gram.gate'&&m.memo==='UQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'&&m.force_memo_encoding===false;})()`));
   check('popup controls have accessible names',(await unnamed())===0,'unnamed='+await unnamed());
   check('no JS errors',jsErrors.length===0,jsErrors.join(' | '));
 }catch(e){console.error('ERR:',e.message);fails.push(e.message);}finally{try{ws&&ws.close();}catch(_){}try{process.kill(-chrome.pid);}catch(_){}try{srv.kill();}catch(_){}}

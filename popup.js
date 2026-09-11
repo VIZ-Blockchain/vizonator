@@ -936,6 +936,30 @@ function show_award_form(){
 	$('.close-modal-action').on('click',close_modal_action);
 }
 
+function apply_transfer_template(){
+	let page=$('.modal .content');
+	let template=page.find('select[name=transfer-template]').val();
+	let account_input=page.find('input[name=form-account]');
+	let memo_input=page.find('input[name=form-memo]');
+	let encode_input=page.find('input[name=encode-memo]');
+	let hint=page.find('.transfer-template-hint');
+
+	if('ton'==template){
+		account_input.val('gram.gate');
+		memo_input.val('').attr('placeholder',ltmp_arr.transfer_template_ton_memo);
+		encode_input.prop('checked',false).prop('disabled',true);
+		hint.html(ltmp_arr.transfer_template_ton_hint);
+	}
+	else{
+		if('gram.gate'==account_input.val()){
+			account_input.val('');
+		}
+		memo_input.val('').attr('placeholder',ltmp_arr.transfer_form_memo);
+		encode_input.prop('disabled',false);
+		hint.html(ltmp_arr.transfer_template_regular_hint);
+	}
+}
+
 function transfer_action(){
 	let page=$('.modal .content');
 
@@ -945,6 +969,12 @@ function transfer_action(){
 	let form_account=page.find('input[name=form-account]').val().toLowerCase().trim();
 	let form_amount=page.find('input[name=form-amount]').val().trim();
 	let form_memo=page.find('input[name=form-memo]').val().trim();
+	page.find('input[name=form-memo]').removeClass('red');
+	if('gram.gate'==form_account && (''==form_memo || '#'==form_memo.charAt(0))){
+		page.find('input[name=form-memo]').addClass('red')[0].focus();
+		page.find('.error-caption').html(ltmp_arr.transfer_template_ton_memo_error);
+		return;
+	}
 	let encode=false;
 	if(page.find('input[name=encode-memo]').length>0){
 		encode=page.find('input[name=encode-memo]').prop('checked');
@@ -1054,19 +1084,27 @@ function show_wallet_form(){
 	<div class="info-bar balance-caption last"><!--${ltmp_arr.balance_caption}: --><span>`+current_balance+`</span> Ƶ</div>
 
 	<div class="form-input-wrapper">
-		<input type="text" autocomplete="off" name="form-account" class="wide" placeholder="${ltmp_arr.transfer_form_account}">
+		<label for="transfer-template">${ltmp_arr.transfer_template_caption}</label>
+		<select id="transfer-template" name="transfer-template" class="wide">
+			<option value="ton" selected>${ltmp_arr.transfer_template_ton}</option>
+			<option value="regular">${ltmp_arr.transfer_template_regular}</option>
+		</select>
+		<p class="transfer-template-hint" role="status">${ltmp_arr.transfer_template_ton_hint}</p>
+	</div>
+	<div class="form-input-wrapper">
+		<input type="text" autocomplete="off" name="form-account" class="wide" value="gram.gate" placeholder="${ltmp_arr.transfer_form_account}">
 	</div>
 	<div class="form-input-wrapper">
 		<input type="text" autocomplete="off" name="form-amount" class="wide" placeholder="0.000 VIZ">
 	</div>
 
-	<div class="form-input-wrapper"><input type="text" autocomplete="off" name="form-memo" class="wide" placeholder="${ltmp_arr.award_form_memo}">`;
+	<div class="form-input-wrapper"><input type="text" autocomplete="off" name="form-memo" class="wide" placeholder="${ltmp_arr.transfer_template_ton_memo}">`;
 	if(true===account.memo){
 		//form_html+=`<label><input type="checkbox" name="encode-memo"> &mdash; ${ltmp_arr.award_form_encode_memo}</label>`;
 		form_html+=`
 		<div class="switch-wrapper">
 			<label class="switch" for="checkbox">
-			<input type="checkbox" id="checkbox" name="encode-memo" />
+			<input type="checkbox" id="checkbox" name="encode-memo" disabled />
 			<div class="slider round"></div>
 			</label>
 			<label class="switch-caption" for="checkbox">${ltmp_arr.transfer_form_encode_memo}</label>
@@ -1080,7 +1118,9 @@ function show_wallet_form(){
 
 	$('.modal .content').html(form_html);
 
-	$('.modal .content input[name=form-account]')[0].focus();
+	$('.modal .content select[name=transfer-template]')[0].focus();
+	$('.modal .content select[name=transfer-template]').off('change',apply_transfer_template);
+	$('.modal .content select[name=transfer-template]').on('change',apply_transfer_template);
 
 	$('.transfer-action').off('click',transfer_action);
 	$('.transfer-action').on('click',transfer_action);
