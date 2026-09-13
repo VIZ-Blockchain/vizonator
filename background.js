@@ -618,6 +618,175 @@ function valid_transfer_amount(amount){
 	return parseFloat(amount)>0;
 }
 
+/* Логин приходит со страницы: нормализуем так же, как import_account (@, регистр). */
+function normalize_account_login(login){
+	if(typeof login !== 'string'){
+		return false;
+	}
+	login=login.trim();
+	if('@'==login.substring(0,1)){
+		login=login.substring(1);
+	}
+	login=login.toLowerCase();
+	if(''==login){
+		return false;
+	}
+	return login;
+}
+
+/* Что сессия знает про аккаунты — для dApp-пикеров. Приватные ключи не покидают
+   background: наружу уходят логины, признак текущего и булевы флаги наличия ключей
+   (те же, что get_account отдаёт по текущему аккаунту). */
+function accounts_info(){
+	let list=[];
+	for(let login in users){
+		let user=users[login];
+		if(!user||'object'!=typeof user){
+			continue;
+		}
+		list.push({
+			login:login,
+			current:(login==current_user),
+			regular:('string'==typeof user.regular_key&&''!=user.regular_key),
+			active:('string'==typeof user.active_key&&''!=user.active_key),
+			memo:('string'==typeof user.memo_key&&''!=user.memo_key),
+		});
+	}
+	return {current:current_user,accounts:list};
+}
+
+/* Смена аккаунта — событие для страниц (accountsChanged). Шлём «звонок» во ВСЕ
+   вкладки, а не в заранее сохранённый список подписчиков: service worker MV3
+   засыпает и теряет память, а страница со своим списком подписчиков живёт ровно
+   столько, сколько живёт страница. Дальше каждая вкладка сама решает, спрашивать
+   ли данные, — и получает их, только если правило 'accounts' уже одобрено. */
+function notify_accounts_changed(){
+	ext_browser.tabs.query({},function(tabs){
+		if(ext_browser.runtime.lastError){
+			console.log(ext_browser.runtime.lastError.message);
+			return;
+		}
+		for(let notify_i in tabs){
+			let notify_tab=tabs[notify_i];
+			if(typeof notify_tab.id === 'undefined'){
+				continue;
+			}
+			ext_browser.tabs.sendMessage(notify_tab.id,{event:'vizonator_accounts_ping',data:true},function(){
+				/* у вкладки может не быть content script (chrome://, PDF, магазин) */
+				if(ext_browser.runtime.lastError){
+					console.log(ext_browser.runtime.lastError.message);
+				}
+			});
+		}
+	});
+}
+
+/* Публичного списка суффиксов (PSL) у расширения нет, поэтому «главный домен» считаем
+   как последние две метки, а для известных shared-суффиксов берём на метку больше:
+   на github.io / vercel.app / netlify.app и подобных площадках поддомен раздают кому
+   угодно, и «владелец домена» там не один. Список — гард, а не PSL: он закрывает
+   именно те зоны, где чужой поддомен = чужой сайт. Без него evil.github.io подписал бы
+   за github.io, то есть сразу за всех, кто там хостится. */
+var SHARED_SUFFIXES=[
+	'github.io','githubusercontent.com','gitlab.io','bitbucket.io','pages.dev','workers.dev',
+	'vercel.app','netlify.app','netlify.com','herokuapp.com','web.app','firebaseapp.com',
+	'appspot.com','cloudfront.net','s3.amazonaws.com','blogspot.com','wordpress.com',
+	'tumblr.com','myshopify.com','glitch.me','repl.co','replit.dev','surge.sh','onrender.com',
+	'fly.dev','deno.dev','neocities.org','readthedocs.io','azurewebsites.net','cloudapp.azure.com',
+	'co.uk','org.uk','ac.uk','gov.uk','com.au','net.au','org.au','co.nz','co.jp','ne.jp',
+	'or.jp','com.br','com.cn','com.mx','com.tr','co.in','co.za','com.ua','co.kr','com.tw'
+];
+function main_domain(host){
+	if(typeof host !== 'string'||''==host){
+		return '';
+	}
+	host=host.toLowerCase();
+	let parts=host.split('.');
+	if(parts.length<2){
+		return host;
+	}
+	let tail=parts.slice(-2).join('.');
+	/* на shared-суффиксе главный домен — тремя метками: attacker.github.io */
+	let take=(-1!=SHARED_SUFFIXES.indexOf(tail))?3:2;
+	if(parts.length<take){
+		return host;
+	}
+	return parts.slice(-take).join('.');
+}
+
+/* passwordless_auth подписывает строку, начинающуюся с домена. Веб-страница вправе
+   назвать СВОЙ хост, а со 0.77 — ещё и свой ГЛАВНЫЙ домен: www.example.com и example.com
+   принадлежат одному владельцу. Всё остальное отказ (domain_mismatch): другой домен,
+   другой поддомен и другой порт. Поддомен НЕ вправе подписать за соседний поддомен —
+   это уже другой сайт.
+   Подпись за главный домен НИКОГДА не одобряется молча (force_ask) и помечается
+   main_domain: строка уйдёт на главный домен, а не на тот хост, где открыта страница,
+   поэтому окно показывает по ней оранжевое предупреждение.
+   Подписываем при этом не строку страницы, а вычисленный расширением хост: так
+   результат совпадает с тем, что подписывалось раньше (старый вызов без domain).
+   Имена viz:// — это VIZ DNS, а не веб-origin: их можно запросить с любой страницы,
+   но такое имя НИКОГДА не одобряется молча (force_ask) — пользователь обязан увидеть,
+   какой домен просит подпись для какого аккаунта.
+   Возврат: {domain, force_ask, main_domain} либо {error}. */
+function auth_domain_check(requested,origin){
+	let target=origin;
+	let force_ask=false;
+	let main_domain_used=false;
+	if(typeof requested === 'string'&&''!=requested.trim()){
+		requested=requested.trim();
+		if(0==requested.toLowerCase().indexOf('viz://')){
+			if('viz://'==requested.toLowerCase()){
+				return {error:'bad_domain'};
+			}
+			/* имя VIZ DNS подписываем как запрошено (вместе со схемой и хвостом) */
+			return {domain:requested,force_ask:true};
+		}
+		let host=requested;
+		let scheme_sep=host.indexOf('://');
+		if(-1!=scheme_sep){
+			let scheme=host.substring(0,scheme_sep).toLowerCase();
+			if('http'!=scheme&&'https'!=scheme){
+				return {error:'bad_domain'};
+			}
+			host=host.substring(scheme_sep+3);
+		}
+		let cut=host.search(/[\/?#]/);
+		if(-1!=cut){
+			host=host.substring(0,cut);
+		}
+		/* userinfo может прятать чужой домен: https://hub.viz.world@evil.com */
+		let at=host.lastIndexOf('@');
+		if(-1!=at){
+			host=host.substring(at+1);
+		}
+		host=host.toLowerCase();
+		if(''==host||typeof origin !== 'string'||''==origin){
+			return {error:'domain_mismatch'};
+		}
+		if(host!=origin.toLowerCase()){
+			/* Страница на поддомене вправе подписать за свой главный домен. Проверка
+			   ровно одна: главный домен СВОЕГО хоста обязан совпасть с запрошенным.
+			   Отсюда сразу следуют оба запрета — главный домен не подпишет за поддомен
+			   (у него главный домен он сам) и поддомен не подпишет за соседний поддомен
+			   (главный домен у них общий, но запрошен-то не он). */
+			let main=main_domain(origin);
+			if(''==main||main!=host){
+				return {error:'domain_mismatch'};
+			}
+			force_ask=true;
+			main_domain_used=true;
+			target=host;
+		}
+		else{
+			target=origin;
+		}
+	}
+	if(typeof target !== 'string'||''==target){
+		return {error:'domain_mismatch'};
+	}
+	return {domain:target,force_ask:force_ask,main_domain:main_domain_used};
+}
+
 /* Common functions for encryption */
 function hexStringToUint8Array(hexString) {
 	if (hexString.length % 2 != 0)
@@ -1404,7 +1573,41 @@ function inpage_action(request){
 	}
 	else
 	if('passwordless_auth'==request.operation){
+		/* Подписываем за аккаунт, который пользователь ВИДЕЛ в окне: пока окно было
+		   открыто, он мог переключить аккаунт (switch_account), и молча выдать подпись
+		   за другой аккаунт нельзя. Домен тоже перепроверяем — окно есть окно. */
+		let auth_account=(typeof request.account === 'string'&&''!=request.account)?request.account:current_user;
+		let auth_domain=auth_domain_check(request.domain,request.origin);
 		let error=false;
+		if(auth_domain.error){
+			error=true;
+			if(request.tab_id){
+				ext_browser.tabs.get(request.tab_id,function(tab){
+					if(ext_browser.runtime.lastError){
+						console.log(ext_browser.runtime.lastError.message);
+					}
+					else{
+						let response={'error':auth_domain.error,'result':false}
+						ext_browser.tabs.sendMessage(request.tab_id,{event:request.event,data:response});
+					}
+				});
+			}
+		}
+		if(!error)
+		if(auth_account!=current_user||typeof users[auth_account] === 'undefined'){
+			error=true;
+			if(request.tab_id){
+				ext_browser.tabs.get(request.tab_id,function(tab){
+					if(ext_browser.runtime.lastError){
+						console.log(ext_browser.runtime.lastError.message);
+					}
+					else{
+						let response={'error':'account_changed','result':false}
+						ext_browser.tabs.sendMessage(request.tab_id,{event:request.event,data:response});
+					}
+				});
+			}
+		}
 		let private_key=account.regular_key;
 		if('active'==request.authority){
 			if(''!=account.active_key){
@@ -1437,7 +1640,7 @@ function inpage_action(request){
 				}
 				else{
 					response_error=false;
-					passwordless_auth(private_key,current_user,request.origin,request.authority,function(result){
+					passwordless_auth(private_key,auth_account,auth_domain.domain,request.authority,function(result){
 						response_result=result;
 						let response={'error':response_error,'result':response_result}
 						ext_browser.tabs.sendMessage(request.tab_id,{event:request.event,data:response});
@@ -1695,6 +1898,76 @@ function inpage_action(request){
 					ext_browser.tabs.sendMessage(request.tab_id,{event:request.event,data:response});
 				}
 			});
+		}
+	}
+	else
+	if('get_accounts'==request.operation){
+		if(request.tab_id){
+			ext_browser.tabs.get(request.tab_id,function(tab){
+				if(ext_browser.runtime.lastError){
+					console.log(ext_browser.runtime.lastError.message);
+				}
+				else{
+					let response={
+						'error':false,
+						'result':accounts_info()
+					};
+					ext_browser.tabs.sendMessage(request.tab_id,{event:request.event,data:response});
+				}
+			});
+		}
+	}
+	else
+	if('accounts_changed'==request.operation){
+		/* сюда попадаем только с одобренным правилом 'accounts' (иначе ветка выше
+		   ответила no_rule и не пустила дальше) — отдаём тот же снимок, что get_accounts */
+		if(request.tab_id){
+			ext_browser.tabs.get(request.tab_id,function(tab){
+				if(ext_browser.runtime.lastError){
+					console.log(ext_browser.runtime.lastError.message);
+				}
+				else{
+					let response={
+						'error':false,
+						'result':accounts_info()
+					};
+					ext_browser.tabs.sendMessage(request.tab_id,{event:request.event,data:response});
+				}
+			});
+		}
+	}
+	else
+	if('switch_account'==request.operation){
+		/* исполняется только после одобрения окна; аккаунт перепроверяем здесь, потому
+		   что решение пользователя приходит из окна, а ему доверять нельзя */
+		let switch_login=normalize_account_login(request.account);
+		let switch_error=(false===switch_login||typeof users[switch_login] === 'undefined')?'unknown_account':false;
+		let switch_result=false;
+		let switch_respond=function(){
+			if(request.tab_id){
+				ext_browser.tabs.get(request.tab_id,function(tab){
+					if(ext_browser.runtime.lastError){
+						console.log(ext_browser.runtime.lastError.message);
+					}
+					else{
+						let response={'error':switch_error,'result':switch_result};
+						ext_browser.tabs.sendMessage(request.tab_id,{event:request.event,data:response});
+					}
+				});
+			}
+		};
+		if(switch_error){
+			switch_respond();
+		}
+		else{
+			current_user=switch_login;
+			account=users[current_user];
+			state.current_user=current_user;
+			switch_result={login:switch_login,switched:true};
+			/* сайт, которому доверен список аккаунтов, вправе узнать о смене сразу,
+			   а не ждать следующего запроса */
+			notify_accounts_changed();
+			save_state(switch_respond);
 		}
 	}
 	else
@@ -2131,9 +2404,15 @@ function handle_message(request,sender,sendResponse){
 				temp_state.password='';
 			}
 			console.log('trying save temp_state',temp_state,temp_state.users);
+			/* аккаунт мог смениться прямо здесь (попап сохраняет своё состояние) —
+			   запоминаем, каким он был, чтобы после load_state понять, менять ли его */
+			let prev_user=current_user;
 			state=JSON.parse(JSON.stringify(temp_state));
 			save_state(function(){
 				load_state(state.password,function(encode_status){
+					if(current_user!=prev_user){
+						notify_accounts_changed();
+					}
 					sendResponse({status:encode_status});
 				});
 			});
@@ -2603,6 +2882,57 @@ function handle_message(request,sender,sendResponse){
 								console.log('Trustline found:',origin,rules[origin],need_weight,trustline);
 							}
 
+							/* Подписка на смену аккаунта окна НЕ открывает: это не операция,
+							   а канал. Но и данных без правила 'accounts' не отдаёт — иначе
+							   любой сайт узнавал бы логины, ничего не одобрив. Нет правила —
+							   тихий отказ: страница не получает ни окна, ни аккаунта. */
+							if('accounts_changed'==request.operation&&'approve'!=trustline){
+								ext_browser.tabs.sendMessage(tab_id,{event:request.event,data:{'error':('refuse'==trustline?'refuse':'no_rule'),'result':false}});
+								return;
+							}
+
+							/* passwordless_auth: страница может назвать домен для подписи, но
+							   веб-хост обязан совпасть со своим же (auth_domain_check), а имя
+							   viz:// не одобряется молча — пользователь обязан его увидеть.
+							   Отказ отдаём сразу: ни окна, ни авто-исполнения по трастлайну. */
+							if('passwordless_auth'==request.operation){
+								let auth_domain=auth_domain_check(request.domain,origin);
+								if(auth_domain.error){
+									ext_browser.tabs.sendMessage(tab_id,{event:request.event,data:{'error':auth_domain.error,'result':false}});
+									return;
+								}
+								request.domain=auth_domain.domain;
+								/* подпись за главный домен — то же «не как у себя»: окно
+								   обязано показать по ней предупреждение */
+								request.auth_main_domain=auth_domain.main_domain;
+								/* имя viz:// одобряем только глазами пользователя — снимаем
+								   авто-одобрение, но сохранённый ОТКАЗ сайту не перебиваем */
+								if(auth_domain.force_ask&&'refuse'!=trustline){
+									trustline=false;
+								}
+							}
+							/* смена аккаунта — всегда через окно подтверждения: сайт не может
+							   переключить кошелёк молча, даже имея доверие на 'account'
+							   (элемент правила 'account_switch' отдельный и не запоминается) */
+							if('switch_account'==request.operation){
+								let switch_login=normalize_account_login(request.account);
+								if(false===switch_login){
+									ext_browser.tabs.sendMessage(tab_id,{event:request.event,data:{'error':'empty account','result':false}});
+									return;
+								}
+								if(typeof users[switch_login] === 'undefined'){
+									ext_browser.tabs.sendMessage(tab_id,{event:request.event,data:{'error':'unknown_account','result':false}});
+									return;
+								}
+								if(switch_login==current_user){
+									/* запрошен уже текущий аккаунт — переключать нечего */
+									ext_browser.tabs.sendMessage(tab_id,{event:request.event,data:{'error':false,'result':{login:switch_login,switched:false}}});
+									return;
+								}
+								request.account=switch_login;
+								trustline=false;
+							}
+
 							if('award'==request.operation){
 								if(request.force_memo_encoding){
 									if(''==account.memo_key){
@@ -2780,6 +3110,13 @@ function handle_message(request,sender,sendResponse){
 									event:request.event,
 
 									authority:request.authority,
+									/* домен, за который просят подпись (проверен выше), и
+									   аккаунт на момент запроса — окно показывает их
+									   пользователю, а background сверяет аккаунт перед
+									   подписью (мог смениться, пока окно открыто) */
+									domain:request.domain,
+									account:current_user,
+									auth_main_domain:(true===request.auth_main_domain),
 								};
 							}
 							if('sign_data'==request.operation){
@@ -2881,6 +3218,38 @@ function handle_message(request,sender,sendResponse){
 									operation:request.operation,
 									operation_type:request.operation_type,
 									event:request.event,
+								};
+							}
+							if('accounts_changed'==request.operation){
+								action_request={
+									tab_id,
+									origin,
+									id:request.id,
+									operation:request.operation,
+									operation_type:request.operation_type,
+									event:request.event,
+								};
+							}
+							if('get_accounts'==request.operation){
+								action_request={
+									tab_id,
+									origin,
+									id:request.id,
+									operation:request.operation,
+									operation_type:request.operation_type,
+									event:request.event,
+								};
+							}
+							if('switch_account'==request.operation){
+								action_request={
+									tab_id,
+									origin,
+									id:request.id,
+									operation:request.operation,
+									operation_type:request.operation_type,
+									event:request.event,
+
+									account:request.account,
 								};
 							}
 							if('import_account'==request.operation){

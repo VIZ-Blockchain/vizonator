@@ -173,6 +173,16 @@ var ltmp_ru_arr={
 	json_caption:'JSON',
 	vote_percent_caption:'Процент голосования',
 
+	/* passwordless_auth: за какой домен просят подпись и чьим аккаунтом её сделают */
+	auth_domain_caption:'Домен подписи',
+	auth_account_caption:'Аккаунт подписи',
+	/* страница открыта на поддомене, а подпись просят за главный домен */
+	auth_main_domain_warning:'Внимание: подпись выдаётся за главный домен, а не за тот сайт, где вы сейчас находитесь. Подтверждайте, только если доверяете всему домену целиком.',
+	/* get_accounts: список аккаунтов сессии, без приватных ключей */
+	accounts_no_keys_caption:'Передаются только логины и признаки наличия ключей. Приватные ключи не покидают расширение.',
+	/* switch_account: аккаунт, на который просят переключиться */
+	switch_account_target_caption:'Переключить на',
+
 	from_caption:'От',
 	limit_caption:'Количество',
 	operations_caption:{
@@ -187,6 +197,8 @@ var ltmp_ru_arr={
 		get_custom_current_account:'Информация о текущем аккаунте',
 		get_account:'Получить текущий аккаунт',
 		get_settings:'Получить настройки',
+		get_accounts:'Получить список аккаунтов',
+		switch_account:'Сменить аккаунт',
 		import_account:'Импортировать аккаунт',
 		account_metadata:'Обновить мета-данные',
 		get_account_history:'Получить историю для',

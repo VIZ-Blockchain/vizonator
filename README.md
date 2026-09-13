@@ -55,6 +55,63 @@ stays absent on the wire ("leave as is") instead of being sent as a zero.
 The table of operations, their fields and authorities lives in a single file, `pm_ops.js`, shared by
 the background, the page and the confirmation window.
 
+## Accounts for dApps
+
+A dApp can ask which accounts the wallet holds and let the user pick one:
+
+```js
+vizonator.get_accounts(function(error,result){
+	//result = {current:"on1x",accounts:[{login:"on1x",current:true,regular:true,active:true,memo:true}]}
+});
+vizonator.switch_account({account:"hub"},function(error,result){
+	//result = {login:"hub",switched:true}
+});
+```
+
+Only logins and key-presence flags are returned — private keys never leave the extension. The list
+has its own trustline rule (`accounts`), so approving `get_account` does not open it.
+
+A switch is **never silent**: the extension always shows a confirmation window with the current and
+the requested account, and the decision is not remembered (`account_switch` is not saved as a rule),
+otherwise a trusted site could move the wallet to an account the user never connected it to. Asking
+for the already-current account is answered at once, without a window. An unknown login is refused
+with `unknown_account`.
+
+A page can also be told about a change instead of asking for it — and that includes a switch the
+user made in the popup, not just a `switch_account` call:
+
+```js
+vizonator.on("accountsChanged",function(error,result){
+	//result = same snapshot as get_accounts, or error = "no_rule"
+});
+vizonator.off("accountsChanged",handler);//no handlers left — the channel closes
+```
+
+The channel opens no window, but it hands nothing over either: data is delivered only to a site
+whose `accounts` rule is already approved, otherwise the event arrives with `no_rule`. The
+subscription lives as long as the page — a reload has to subscribe again.
+
+## passwordless_auth and domains
+
+`vizonator.passwordless_auth({authority:"regular"},callback)` signs
+`domain:auth:account:authority:timestamp:nonce`. The optional `domain` field names the domain the
+signature is asked for; without it the page's own host is signed, exactly as before.
+
+For `http/https` a page may name its **own** host, and since **0.77** also its **main domain**: a
+page on `app.example.com` may sign for `example.com`, as both belong to the same owner. The window
+then shows an **orange warning** that the string goes to the main domain and not to the host the
+page is open on, and such a request is never approved silently, not even when other operations are
+already trusted for the site. Everything else is refused with `domain_mismatch` before any window
+opens: a foreign domain, a main domain signing for a subdomain, and a subdomain signing for a
+neighbouring subdomain. On platforms that hand subdomains out to anyone (`github.io`, `vercel.app`
+and the like) the main domain is the subdomain itself — otherwise `evil.github.io` would sign for
+everyone hosted there at once.
+
+`viz://` names (VIZ DNS) are allowed from any page, but such a request is never auto-approved: the
+user sees both the domain and the signing account in the window. The confirmation window always
+shows the domain and the account, and a signature for an account the user did not see (switched
+while the window was open) is refused with `account_changed`.
+
 ## Dependencies
 
 * [Cash js](https://github.com/fabiospampinato/cash/)

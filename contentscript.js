@@ -12,6 +12,10 @@ else{
 	}
 }
 var extension_id = ext_browser.runtime.id;
+/* пуш-события, на которые подписалась ЭТА страница. Список живёт ровно столько же,
+   сколько сама страница, — поэтому он здесь, а не в background, который на MV3
+   засыпает и теряет память. Право на данные всё равно проверяет background. */
+var page_events={};
 let width_addon=16;
 let height_addon=36;
 if(ext_firefox){
@@ -27,6 +31,20 @@ ext_browser.runtime.onMessage.addListener(function(request,sender,sendResponse){
 	//console.log('Vizonator message from',sender);
 	if(!sender.tab){//from extension?
 		if(extension_id==sender.id){//from extension!
+			/* «звонок» о смене аккаунта: он уходит во все вкладки, но данные
+			   запрашивает только та, где страница реально подписана, — и получает
+			   их лишь при одобренном правиле accounts (иначе придёт no_rule) */
+			if('vizonator_accounts_ping'==request.event){
+				if(page_events['accountsChanged']){
+					ext_browser.runtime.sendMessage({
+						inpage:true,
+						operation:'accounts_changed',
+						operation_type:['accounts'],
+						event:'accountsChanged'
+					});
+				}
+				return;
+			}
 			console.log('Vizonator extension response',request);
 			document.dispatchEvent(new CustomEvent('vizonator_'+request.event,{detail:JSON.stringify(request.data)}));
 		}
@@ -45,6 +63,21 @@ document.addEventListener('vizonator',function(event){
 
 	let error=true;
 	let result=false;
+
+	if('subscribe'==data_obj.action||'unsubscribe'==data_obj.action){
+		/* страница подписалась на пуш-событие (или сняла последний обработчик).
+		   Сам канал тут не открывается: пока background не позвонит, данных не
+		   будет, а право на них решает правило сайта на стороне background */
+		if(typeof data_obj.data != 'undefined'&&typeof data_obj.data.event == 'string'){
+			if('subscribe'==data_obj.action){
+				page_events[data_obj.data.event]=true;
+			}
+			else{
+				delete page_events[data_obj.data.event];
+			}
+		}
+		return;
+	}
 
 	if('get_account'==data_obj.action){
 		ext_browser.runtime.sendMessage({
@@ -78,6 +111,36 @@ document.addEventListener('vizonator',function(event){
 
 			action_top,action_left,action_width,action_height
 		});
+	}
+	else
+	if('get_accounts'==data_obj.action){
+		ext_browser.runtime.sendMessage({
+			inpage:true,
+			operation:'get_accounts',
+			operation_type:['accounts'],
+			event:data_obj.event,
+
+			action_top,action_left,action_width,action_height
+		});
+	}
+	else
+	if('switch_account'==data_obj.action){
+		if(typeof data.account != 'string' || ''==data.account.trim()){
+			error='empty account';
+			document.dispatchEvent(new CustomEvent('vizonator_'+data_obj.event,{detail:JSON.stringify({'error':error,'result':result})}));
+		}
+		else{
+			ext_browser.runtime.sendMessage({
+				inpage:true,
+				operation:'switch_account',
+				operation_type:['account_switch'],
+				event:data_obj.event,
+
+				account:data.account.trim(),
+
+				action_top,action_left,action_width,action_height
+			});
+		}
 	}
 	else
 	if('award'==data_obj.action){
@@ -479,6 +542,10 @@ document.addEventListener('vizonator',function(event){
 			event:data_obj.event,
 
 			authority:data.authority,
+			/* optional: the domain the page wants the signature made out for. It is only
+			   a request — the background accepts a web name just as the page's own host
+			   and lets viz:// names through for the user to see and confirm. */
+			domain:(typeof data.domain == 'string'?data.domain:false),
 
 			action_top,action_left,action_width,action_height
 		});

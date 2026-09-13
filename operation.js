@@ -480,6 +480,12 @@ function action_info(){
 		if('get_settings'==action.operation){
 			operation_str=ltmp_arr.operations_caption.get_settings;
 		}
+		if('get_accounts'==action.operation){
+			operation_str=ltmp_arr.operations_caption.get_accounts;
+		}
+		if('switch_account'==action.operation){
+			operation_str=ltmp_arr.operations_caption.switch_account;
+		}
 		if('import_account'==action.operation){
 			operation_str=ltmp_arr.operations_caption.import_account;
 		}
@@ -652,6 +658,21 @@ function action_info(){
 			result+='<p class="orange">'+ltmp_arr.origin_caption+': '+action.origin+'</p>';
 			result+='</div>';
 		}
+		if('get_accounts'==action.operation){
+			result+='<p class="caption">'+operation_str+'</p>';
+			result+='<p class="orange">'+ltmp_arr.origin_caption+': '+action.origin+'</p>';
+			result+='<p class="gray">'+ltmp_arr.accounts_no_keys_caption+'</p>';
+			result+='</div>';
+		}
+		if('switch_account'==action.operation){
+			/* Смена аккаунта: пользователь видит и текущий, и запрошенный — окно
+			   единственное место, где это решение принимается. */
+			result+='<p class="caption">'+operation_str+'</p>';
+			result+='<p class="orange">'+ltmp_arr.origin_caption+': '+action.origin+'</p>';
+			result+='<p class="gray">'+ltmp_arr.current_account_caption+': <span class="monospace">'+escape_html(current_user)+'</span></p>';
+			result+='<p class="blue">'+ltmp_arr.switch_account_target_caption+': <span class="">'+escape_html(action.account?action.account:'')+'</span></p>';
+			result+='</div>';
+		}
 		if('import_account'==action.operation){
 			result+='<p class="caption">'+operation_str+' '+escape_html(action.account?action.account:'')+'</p>';
 			result+='<p class="orange">'+ltmp_arr.origin_caption+': '+action.origin+'</p>';
@@ -692,8 +713,18 @@ function action_info(){
 			result+='</div>';
 		}
 		if('passwordless_auth'==action.operation){
+			/* Подпись выдаётся «за домен»: показываем и домен, за который просят
+			   подпись, и аккаунт, чьим ключом она будет сделана. Для viz://-имени
+			   это единственное место, где пользователь его вообще увидит. */
 			result+='<p class="caption">'+operation_str+'</p>';
 			result+='<p class="orange">'+ltmp_arr.origin_caption+': '+action.origin+'</p>';
+			result+='<p class="blue">'+ltmp_arr.auth_domain_caption+': <span class="monospace">'+escape_html(action.domain?action.domain:action.origin)+'</span></p>';
+			result+='<p>'+ltmp_arr.auth_account_caption+': <span class="monospace">'+escape_html(action.account?action.account:current_user)+'</span></p>';
+			if(action.auth_main_domain){
+				/* Поддомен подписывает за главный домен: строка уйдёт НЕ на тот хост,
+				   где открыта страница, — пользователь обязан это заметить. */
+				result+='<p class="warn">'+ltmp_arr.auth_main_domain_warning+'</p>';
+			}
 			if(action.authority){
 				result+='<p>'+ltmp_arr.authority_caption+': <span class="'+('active'==action.authority?'red':'')+'">'+escape_html(action.authority)+'</span></p>';
 			}
@@ -780,7 +811,11 @@ function action_info(){
 			result+='</div>';
 		}
 
-		result+='<div class="text-right trust"><label class="unselectable"><input type="checkbox" name="save"> &mdash; '+ltmp_arr.save_rule_caption+'</label></div>';
+		/* Смену аккаунта не запоминаем: правило сайта не должно позволять ему молча
+		   переключать кошелёк на другой аккаунт, поэтому галочку здесь не показываем. */
+		if('switch_account'!=action.operation){
+			result+='<div class="text-right trust"><label class="unselectable"><input type="checkbox" name="save"> &mdash; '+ltmp_arr.save_rule_caption+'</label></div>';
+		}
 		result+='<div class="text-right">';
 		result+='<a class="refuse-action button negative unselectable"><span class="icon"><img src="images/cross.svg"></span> '+ltmp_arr.refuse_caption+'</a>';
 		result+='<a class="approve-action button unselectable"><span class="icon"><img src="images/check.svg"></span> '+ltmp_arr.approve_caption+'</a>';

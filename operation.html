@@ -88,6 +88,21 @@ body.dark .blue{
 	color:#0097f4;
 }
 .red{color:#ff2020;}
+/* предупреждение, которое нельзя не заметить: подпись уходит не на тот хост, где
+   открыта страница (поддомен подписывает за главный домен) */
+.warn{
+	color:#f60;
+	font-weight:bold;
+	border-left:3px solid #f60;
+	background:rgba(255,102,0,0.08);
+	padding:6px 8px;
+	border-radius:3px;
+}
+body.dark .warn{
+	color:#f71;
+	border-left-color:#f71;
+	background:rgba(255,119,17,0.12);
+}
 .monospace{
 	word-wrap:break-word;
 	/* длинный токен без пробелов (base64, hex, data-строка подписи) обязан переноситься,

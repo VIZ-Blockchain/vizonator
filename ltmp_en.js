@@ -173,6 +173,16 @@ var ltmp_en_arr={
 	json_caption:'JSON',
 	vote_percent_caption:'Vote percent',
 
+	/* passwordless_auth: which domain the signature is made out for, and whose account signs it */
+	auth_domain_caption:'Domain to sign',
+	auth_account_caption:'Signing account',
+	/* the page sits on a subdomain but asks the signature to be made out for the main domain */
+	auth_main_domain_warning:'Warning: the signature is made out for the main domain, not for the site you are on right now. Approve only if you trust the whole domain.',
+	/* get_accounts: the session account list, without private keys */
+	accounts_no_keys_caption:'Only logins and key-presence flags are returned. Private keys never leave the extension.',
+	/* switch_account: the account the page asks to switch to */
+	switch_account_target_caption:'Switch to',
+
 	from_caption:'From',
 	limit_caption:'Limit',
 	operations_caption:{
@@ -187,6 +197,8 @@ var ltmp_en_arr={
 		get_custom_current_account:'Get current account info',
 		get_account:'Get current account',
 		get_settings:'Get settings',
+		get_accounts:'Get accounts list',
+		switch_account:'Switch account',
 		import_account:'Import account',
 		account_metadata:'Update meta for',
 		get_account_history:'Get history for',
