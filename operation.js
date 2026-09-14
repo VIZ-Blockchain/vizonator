@@ -314,6 +314,7 @@ function check_transfer_amount(show_error){
 	let error_box=$('.amount_error');
 	let fail=function(message){
 		field.addClass('error');
+		field.attr('aria-invalid','true');
 		if(show_error){
 			error_box.html(message);
 		}
@@ -322,6 +323,7 @@ function check_transfer_amount(show_error){
 	let raw=(''+field.val()).trim().replace(/[^0-9\,\.]/g,'');
 	field.val(raw);
 	field.removeClass('error');
+	field.attr('aria-invalid','false');
 	error_box.html('');
 	if(''==raw){
 		return show_error?fail(ltmp_arr.default_check_amount):false;
@@ -591,9 +593,9 @@ function action_info(){
 			if(false===action.amount || ''===action.amount){
 				//Страница не назвала сумму — пользователь вводит её сам.
 				result+='<p class="blue">'+ltmp_arr.amount_caption+':</p>';
-				result+='<p><input type="text" class="amount_input" name="transfer-amount" autocomplete="off" inputmode="decimal" placeholder="0.000 Ƶ"></p>';
-				result+='<p class="gray amount_balance">'+ltmp_arr.balance_caption+': '+escape_html(current_balance)+' Ƶ</p>';
-				result+='<p class="red amount_error"></p>';
+				result+='<p><input type="text" class="amount_input" name="transfer-amount" autocomplete="off" inputmode="decimal" placeholder="0.000 Ƶ" aria-label="'+ltmp_arr.amount_caption+'" aria-describedby="transfer-amount-balance transfer-amount-error"></p>';
+				result+='<p class="gray amount_balance" id="transfer-amount-balance">'+ltmp_arr.balance_caption+': '+escape_html(current_balance)+' Ƶ</p>';
+				result+='<p class="red amount_error" id="transfer-amount-error" role="alert" aria-live="assertive"></p>';
 			}
 			else{
 				result+='<p class="blue">'+ltmp_arr.amount_caption+': <span class="">'+escape_html(action.amount.replace('VIZ','Ƶ'))+'</span></p>';
@@ -817,8 +819,8 @@ function action_info(){
 			result+='<div class="text-right trust"><label class="unselectable"><input type="checkbox" name="save"> &mdash; '+ltmp_arr.save_rule_caption+'</label></div>';
 		}
 		result+='<div class="text-right">';
-		result+='<a class="refuse-action button negative unselectable"><span class="icon"><img src="images/cross.svg"></span> '+ltmp_arr.refuse_caption+'</a>';
-		result+='<a class="approve-action button unselectable"><span class="icon"><img src="images/check.svg"></span> '+ltmp_arr.approve_caption+'</a>';
+		result+='<a role="button" tabindex="0" class="refuse-action button negative unselectable"><span class="icon"><img src="images/cross.svg" alt=""></span> '+ltmp_arr.refuse_caption+'</a>';
+		result+='<a role="button" tabindex="0" class="approve-action button unselectable"><span class="icon"><img src="images/check.svg" alt=""></span> '+ltmp_arr.approve_caption+'</a>';
 		$('.action').html(result);
 		if('award'==action.operation){
 			let selected_energy=false;

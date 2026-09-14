@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width">
@@ -11,7 +11,9 @@
 <script src="ltmp_ru.js"></script>
 
 <script src="storage-polyfill.js"></script>
+<script src="a11y.js"></script>
 <script src="popup.js"></script>
+<link rel="stylesheet" href="a11y.css">
 <style>
 html{
 	scrollbar-width:none;
@@ -617,7 +619,7 @@ body.dark .modal .button-space{
 	vertical-align: middle;
 }
 .modal .switch input {
-	display:none;
+	position:absolute;
 }
 .modal .slider {
 	background-color: rgba(134, 134, 134, 0.7);
@@ -731,12 +733,12 @@ body.dark .history-item .history-data .decode-memo-action.red{
 </style>
 </head>
 <body>
-<div class="window-wrapper">
+<main class="window-wrapper">
 	<div class="logo unselectable"><img src="images/icon32.svg" alt="Vizonator logo"></div>
 	<div class="tab"></div>
 	<div class="info"></div>
 	<div class="buttons"></div>
 	<div class="shadow"></div>
-</div>
+</main>
 </body>
 </html>

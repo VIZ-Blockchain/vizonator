@@ -936,6 +936,189 @@ function show_award_form(){
 	$('.close-modal-action').on('click',close_modal_action);
 }
 
+function read_transfer_templates(){
+	if(typeof localStorage['viz_transfer_templates'] === 'undefined'){
+		return [];
+	}
+	try{
+		let templates=JSON.parse(localStorage['viz_transfer_templates']);
+		if(!Array.isArray(templates)){
+			return [];
+		}
+		return templates.filter(function(item){
+			return item && ('string'==typeof item.name) && ('string'==typeof item.account) && ('string'==typeof item.memo);
+		});
+	}
+	catch(e){
+		return [];
+	}
+}
+
+function write_transfer_templates(templates){
+	localStorage['viz_transfer_templates']=JSON.stringify(templates);
+}
+
+function render_custom_transfer_template_options(){
+	let select=$('.modal .content select[name=transfer-template]')[0];
+	if(!select){
+		return;
+	}
+	Array.from(select.querySelectorAll('option[data-custom]')).forEach(function(option){
+		option.remove();
+	});
+	read_transfer_templates().forEach(function(template,index){
+		let option=document.createElement('option');
+		option.value='custom-'+index;
+		option.textContent=template.name;
+		option.dataset.custom='true';
+		option.dataset.account=template.account;
+		option.dataset.memo=template.memo;
+		select.appendChild(option);
+	});
+}
+
+function apply_transfer_gateway_status(data){
+	let page=$('.modal .content');
+	let select=page.find('select[name=transfer-template]')[0];
+	if(!select){
+		return;
+	}
+	let active=data && true===data.ok && false===data.paused && data.chains;
+	let gram_available=Boolean(active && data.chains.GRAM && 'OK'===data.chains.GRAM.status);
+	let solana_available=Boolean(active && data.chains.SOLANA && 'OK'===data.chains.SOLANA.status);
+	let ton_option=select.querySelector('option[value=ton]');
+	let solana_option=select.querySelector('option[value=solana]');
+	ton_option.disabled=!gram_available;
+	ton_option.hidden=!gram_available;
+	solana_option.disabled=!solana_available;
+	solana_option.hidden=!solana_available;
+	let preferred=gram_available ? 'ton' : (solana_available ? 'solana' : 'regular');
+	let selected_option=select.options[select.selectedIndex];
+	if('true'!=select.dataset.userChanged || !selected_option || selected_option.disabled){
+		select.value=preferred;
+	}
+	apply_transfer_template();
+	if(!gram_available && !solana_available){
+		page.find('.transfer-template-hint').html(ltmp_arr.transfer_gateway_unavailable);
+	}
+}
+
+function load_transfer_gateway_status(){
+	$('.modal .content .transfer-template-hint').html(ltmp_arr.transfer_gateway_checking);
+	return fetch('https://gateway.viz.cx/recon',{cache:'no-store'})
+		.then(function(response){
+			if(!response.ok){
+				throw new Error('gateway status HTTP '+response.status);
+			}
+			return response.json();
+		})
+		.then(function(data){
+			apply_transfer_gateway_status(data);
+		})
+		.catch(function(){
+			apply_transfer_gateway_status(false);
+		});
+}
+
+function apply_transfer_template(){
+	let page=$('.modal .content');
+	let select=page.find('select[name=transfer-template]')[0];
+	let template=select ? select.value : '';
+	let option=select ? select.options[select.selectedIndex] : false;
+	let account_input=page.find('input[name=form-account]');
+	let memo_input=page.find('input[name=form-memo]');
+	let encode_input=page.find('input[name=encode-memo]');
+	let hint=page.find('.transfer-template-hint');
+	let remove_button=page.find('.transfer-template-remove');
+
+	if('ton'==template){
+		account_input.val('gram.gate');
+		memo_input.val('').attr('placeholder',ltmp_arr.transfer_template_ton_memo);
+		encode_input.prop('checked',false).prop('disabled',true);
+		hint.html(ltmp_arr.transfer_template_ton_hint);
+	}
+	else
+	if('solana'==template){
+		account_input.val('solana.gate');
+		memo_input.val('').attr('placeholder',ltmp_arr.transfer_template_solana_memo);
+		encode_input.prop('checked',false).prop('disabled',true);
+		hint.html(ltmp_arr.transfer_template_solana_hint);
+	}
+	else
+	if(0==template.indexOf('custom-') && option){
+		let custom_account=option.dataset.account || '';
+		let is_ton_gateway='gram.gate'==custom_account;
+		let is_solana_gateway='solana.gate'==custom_account;
+		account_input.val(custom_account);
+		memo_input.val(option.dataset.memo || '').attr('placeholder',is_ton_gateway ? ltmp_arr.transfer_template_ton_memo : (is_solana_gateway ? ltmp_arr.transfer_template_solana_memo : ltmp_arr.transfer_form_memo));
+		encode_input.prop('checked',false).prop('disabled',is_ton_gateway || is_solana_gateway);
+		hint.html(is_ton_gateway ? ltmp_arr.transfer_template_ton_hint : (is_solana_gateway ? ltmp_arr.transfer_template_solana_hint : ltmp_arr.transfer_template_custom_hint));
+	}
+	else{
+		if('gram.gate'==account_input.val() || 'solana.gate'==account_input.val()){
+			account_input.val('');
+		}
+		memo_input.val('').attr('placeholder',ltmp_arr.transfer_form_memo);
+		encode_input.prop('disabled',false);
+		hint.html(ltmp_arr.transfer_template_regular_hint);
+	}
+	remove_button.prop('disabled',0!=template.indexOf('custom-'));
+}
+
+function save_transfer_template(){
+	let page=$('.modal .content');
+	let account_value=page.find('input[name=form-account]').val().toLowerCase().trim();
+	let memo_value=page.find('input[name=form-memo]').val().trim();
+	if(''==account_value){
+		page.find('input[name=form-account]')[0].focus();
+		page.find('.error-caption').html(ltmp_arr.default_recipient_error);
+		return;
+	}
+	let name=window.prompt(ltmp_arr.transfer_template_name_prompt,'');
+	if(null===name || ''==name.trim()){
+		return;
+	}
+	name=name.trim();
+	let templates=read_transfer_templates();
+	let existing=templates.findIndex(function(item){return item.name==name;});
+	let item={name:name,account:account_value,memo:memo_value};
+	if(-1==existing){
+		templates.push(item);
+	}
+	else{
+		templates[existing]=item;
+	}
+	write_transfer_templates(templates);
+	render_custom_transfer_template_options();
+	let select=page.find('select[name=transfer-template]');
+	select.val('custom-'+(-1==existing ? templates.length-1 : existing));
+	apply_transfer_template();
+	page.find('.success-caption').html(ltmp_arr.transfer_template_saved);
+}
+
+function remove_transfer_template(){
+	let page=$('.modal .content');
+	let select=page.find('select[name=transfer-template]');
+	let value=select.val();
+	if(0!=value.indexOf('custom-')){
+		return;
+	}
+	let index=parseInt(value.substring(7));
+	let templates=read_transfer_templates();
+	if(index>=0 && index<templates.length){
+		templates.splice(index,1);
+		write_transfer_templates(templates);
+	}
+	render_custom_transfer_template_options();
+	select.val('regular');
+	apply_transfer_template();
+	page.find('.success-caption').html(ltmp_arr.transfer_template_removed);
+}
+
+function is_solana_address(value){
+	return (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/).test(value);
+}
+
 function transfer_action(){
 	let page=$('.modal .content');
 
@@ -945,6 +1128,17 @@ function transfer_action(){
 	let form_account=page.find('input[name=form-account]').val().toLowerCase().trim();
 	let form_amount=page.find('input[name=form-amount]').val().trim();
 	let form_memo=page.find('input[name=form-memo]').val().trim();
+	page.find('input[name=form-memo]').removeClass('red');
+	if('gram.gate'==form_account && (''==form_memo || '#'==form_memo.charAt(0))){
+		page.find('input[name=form-memo]').addClass('red')[0].focus();
+		page.find('.error-caption').html(ltmp_arr.transfer_template_ton_memo_error);
+		return;
+	}
+	if('solana.gate'==form_account && !is_solana_address(form_memo)){
+		page.find('input[name=form-memo]').addClass('red')[0].focus();
+		page.find('.error-caption').html(ltmp_arr.transfer_template_solana_memo_error);
+		return;
+	}
 	let encode=false;
 	if(page.find('input[name=encode-memo]').length>0){
 		encode=page.find('input[name=encode-memo]').prop('checked');
@@ -1054,19 +1248,28 @@ function show_wallet_form(){
 	<div class="info-bar balance-caption last"><!--${ltmp_arr.balance_caption}: --><span>`+current_balance+`</span> Ƶ</div>
 
 	<div class="form-input-wrapper">
+		<label for="transfer-template">${ltmp_arr.transfer_template_caption}</label>
+		<select id="transfer-template" name="transfer-template" class="wide">
+			<option value="ton" hidden disabled>${ltmp_arr.transfer_template_ton}</option>
+			<option value="solana" hidden disabled>${ltmp_arr.transfer_template_solana}</option>
+			<option value="regular" selected>${ltmp_arr.transfer_template_regular}</option>
+		</select>
+		<p class="transfer-template-hint" role="status">${ltmp_arr.transfer_gateway_checking}</p>
+	</div>
+	<div class="form-input-wrapper">
 		<input type="text" autocomplete="off" name="form-account" class="wide" placeholder="${ltmp_arr.transfer_form_account}">
 	</div>
 	<div class="form-input-wrapper">
 		<input type="text" autocomplete="off" name="form-amount" class="wide" placeholder="0.000 VIZ">
 	</div>
 
-	<div class="form-input-wrapper"><input type="text" autocomplete="off" name="form-memo" class="wide" placeholder="${ltmp_arr.award_form_memo}">`;
+	<div class="form-input-wrapper"><input type="text" autocomplete="off" name="form-memo" class="wide" placeholder="${ltmp_arr.transfer_template_ton_memo}">`;
 	if(true===account.memo){
 		//form_html+=`<label><input type="checkbox" name="encode-memo"> &mdash; ${ltmp_arr.award_form_encode_memo}</label>`;
 		form_html+=`
 		<div class="switch-wrapper">
 			<label class="switch" for="checkbox">
-			<input type="checkbox" id="checkbox" name="encode-memo" />
+			<input type="checkbox" id="checkbox" name="encode-memo" disabled />
 			<div class="slider round"></div>
 			</label>
 			<label class="switch-caption" for="checkbox">${ltmp_arr.transfer_form_encode_memo}</label>
@@ -1075,12 +1278,25 @@ function show_wallet_form(){
 	form_html+='</div>';
 	form_html+='<div class="error-caption red"></div>';
 	form_html+='<div class="success-caption green"></div>';
+	form_html+='<button type="button" class="transfer-template-save button wide">'+ltmp_arr.transfer_template_save+'</button>';
+	form_html+='<button type="button" class="transfer-template-remove button wide" disabled>'+ltmp_arr.transfer_template_remove+'</button>';
 	form_html+='<div class="button-space"></div>';
 	form_html+='<div class="footer-button"><input type="button" class="transfer-action wide" value="'+ltmp_arr.transfer_action+'"></div>';
 
 	$('.modal .content').html(form_html);
 
-	$('.modal .content input[name=form-account]')[0].focus();
+	render_custom_transfer_template_options();
+	$('.modal .content select[name=transfer-template]')[0].focus();
+	$('.modal .content select[name=transfer-template]').off('change');
+	$('.modal .content select[name=transfer-template]').on('change',function(){
+		this.dataset.userChanged='true';
+		apply_transfer_template();
+	});
+	load_transfer_gateway_status();
+	$('.transfer-template-save').off('click',save_transfer_template);
+	$('.transfer-template-save').on('click',save_transfer_template);
+	$('.transfer-template-remove').off('click',remove_transfer_template);
+	$('.transfer-template-remove').on('click',remove_transfer_template);
 
 	$('.transfer-action').off('click',transfer_action);
 	$('.transfer-action').on('click',transfer_action);
