@@ -977,6 +977,79 @@ function render_custom_transfer_template_options(){
 	});
 }
 
+// Live gateway tariff. The GRAM floor is DERIVED on the gateway from the VIZ/TON rate
+// (`mintGasTon * gramVizPerTon * margin`), so 45/37.5 baked into the dictionary would be a
+// second copy of a number that moves with the rate. Read it from /fees instead; the plain
+// `transfer_template_*_hint` strings stay as the fallback when the endpoint is unreachable.
+var transfer_gateway_fees=null;
+
+function fmt_gateway_amount(milli){
+	let value=Math.abs(Number(milli)||0)/1000;
+	let text=value.toFixed(transfer_gateway_fees ? transfer_gateway_fees.decimals : 3);
+	text=text.replace(/0+$/,'').replace(/\.$/,'');
+	return 'ru'==settings.lang ? text.replace('.',',') : text;
+}
+
+function fmt_gateway_percent(bps){
+	let text=(Number(bps)/100).toFixed(2).replace(/0+$/,'').replace(/\.$/,'');
+	return 'ru'==settings.lang ? text.replace('.',',') : text;
+}
+
+// Smallest gross that still leaves `net` at or above the mint-gas floor after the fee.
+// Below the amount where the percentage overtakes the floor, base == floor, so the sum is
+// exact; the percentage branch only binds if bps ever grows that far.
+function gateway_min_milli(fees,chain,provisioned){
+	let floor=Number(fees['floorMilliViz'][chain])||0;
+	let surcharge=provisioned ? 0 : (Number(fees['activationSurchargeMilliViz'][chain])||0);
+	let gas=Number(fees['mintGasFloorMilliViz'][chain])||0;
+	let min=floor+surcharge+gas;
+	let bps=Number(fees.bps)||0;
+	if(bps>0 && bps<10000){
+		min=Math.max(min,Math.ceil((surcharge+gas)*10000/(10000-bps)));
+	}
+	return min;
+}
+
+function read_transfer_gateway_fees(data){
+	if(!data || 'object'!=typeof data || !data['floorMilliViz'] || !data['activationSurchargeMilliViz'] || !data['mintGasFloorMilliViz']){
+		return null;
+	}
+	return {
+		'floorMilliViz':data['floorMilliViz'],
+		'activationSurchargeMilliViz':data['activationSurchargeMilliViz'],
+		'mintGasFloorMilliViz':data['mintGasFloorMilliViz'],
+		'bps':Number(data.bps)||0,
+		'decimals':'number'==typeof data.decimals ? data.decimals : 3,
+	};
+}
+
+// The tariff endpoint keys chains by gateway name (GRAM/SOLANA), the template select by
+// network name (ton/solana) — map at this boundary, never deeper.
+function transfer_gateway_fee_line(chain){
+	let fees=transfer_gateway_fees;
+	let gateway_chain='ton'==chain ? 'GRAM' : ('solana'==chain ? 'SOLANA' : '');
+	if(!gateway_chain || !fees || 'undefined'==typeof fees['floorMilliViz'][gateway_chain] || 'undefined'==typeof fees['mintGasFloorMilliViz'][gateway_chain]){
+		return '';
+	}
+	chain=gateway_chain;
+	return ltmp_arr.transfer_template_fee_line
+		.replace('{floor}',fmt_gateway_amount(fees['floorMilliViz'][chain]))
+		.replace('{bps}',fmt_gateway_percent(fees.bps))
+		.replace('{surcharge}',fmt_gateway_amount(fees['activationSurchargeMilliViz'][chain]))
+		.replace('{min}',fmt_gateway_amount(gateway_min_milli(fees,chain,true)))
+		.replace('{min_new}',fmt_gateway_amount(gateway_min_milli(fees,chain,false)));
+}
+
+// `chain` is '' for anything that is not a gateway transfer.
+function transfer_template_hint(chain){
+	if('ton'!=chain && 'solana'!=chain){
+		return '';
+	}
+	let base=ltmp_arr['ton'==chain ? 'transfer_template_ton_hint_base' : 'transfer_template_solana_hint_base'];
+	let line=transfer_gateway_fee_line(chain);
+	return line ? base+' '+line : ltmp_arr['ton'==chain ? 'transfer_template_ton_hint' : 'transfer_template_solana_hint'];
+}
+
 function apply_transfer_gateway_status(data){
 	let page=$('.modal .content');
 	let select=page.find('select[name=transfer-template]')[0];
@@ -1005,19 +1078,33 @@ function apply_transfer_gateway_status(data){
 
 function load_transfer_gateway_status(){
 	$('.modal .content .transfer-template-hint').html(ltmp_arr.transfer_gateway_checking);
-	return fetch('https://gateway.viz.cx/recon',{cache:'no-store'})
+	transfer_gateway_fees=null;
+	// Two independent endpoints. A dead /fees must NOT hide the gateway templates — it only
+	// means the hint falls back to the numbers baked into the dictionary.
+	let status=fetch('https://gateway.viz.cx/recon',{cache:'no-store'})
 		.then(function(response){
 			if(!response.ok){
 				throw new Error('gateway status HTTP '+response.status);
 			}
 			return response.json();
 		})
-		.then(function(data){
-			apply_transfer_gateway_status(data);
+		.catch(function(){
+			return false;
+		});
+	let fees=fetch('https://gateway.viz.cx/fees',{cache:'no-store'})
+		.then(function(response){
+			if(!response.ok){
+				throw new Error('gateway fees HTTP '+response.status);
+			}
+			return response.json();
 		})
 		.catch(function(){
-			apply_transfer_gateway_status(false);
+			return false;
 		});
+	return Promise.all([status,fees]).then(function(results){
+		transfer_gateway_fees=read_transfer_gateway_fees(results[1]);
+		apply_transfer_gateway_status(results[0]);
+	});
 }
 
 function apply_transfer_template(){
@@ -1035,14 +1122,14 @@ function apply_transfer_template(){
 		account_input.val('gram.gate');
 		memo_input.val('').attr('placeholder',ltmp_arr.transfer_template_ton_memo);
 		encode_input.prop('checked',false).prop('disabled',true);
-		hint.html(ltmp_arr.transfer_template_ton_hint);
+		hint.html(transfer_template_hint('ton'));
 	}
 	else
 	if('solana'==template){
 		account_input.val('solana.gate');
 		memo_input.val('').attr('placeholder',ltmp_arr.transfer_template_solana_memo);
 		encode_input.prop('checked',false).prop('disabled',true);
-		hint.html(ltmp_arr.transfer_template_solana_hint);
+		hint.html(transfer_template_hint('solana'));
 	}
 	else
 	if(0==template.indexOf('custom-') && option){
@@ -1052,7 +1139,8 @@ function apply_transfer_template(){
 		account_input.val(custom_account);
 		memo_input.val(option.dataset.memo || '').attr('placeholder',is_ton_gateway ? ltmp_arr.transfer_template_ton_memo : (is_solana_gateway ? ltmp_arr.transfer_template_solana_memo : ltmp_arr.transfer_form_memo));
 		encode_input.prop('checked',false).prop('disabled',is_ton_gateway || is_solana_gateway);
-		hint.html(is_ton_gateway ? ltmp_arr.transfer_template_ton_hint : (is_solana_gateway ? ltmp_arr.transfer_template_solana_hint : ltmp_arr.transfer_template_custom_hint));
+		let custom_chain=is_ton_gateway ? 'ton' : (is_solana_gateway ? 'solana' : '');
+		hint.html(custom_chain ? transfer_template_hint(custom_chain) : ltmp_arr.transfer_template_custom_hint);
 	}
 	else{
 		if('gram.gate'==account_input.val() || 'solana.gate'==account_input.val()){
