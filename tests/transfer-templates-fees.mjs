@@ -44,6 +44,8 @@ const OK_RECON = {ok:true,paused:false,chains:{GRAM:{status:'OK'},SOLANA:{status
 const LIVE_FEES = {floorMilliViz:{GRAM:45000,SOLANA:10000},bps:20,activationSurchargeMilliViz:{GRAM:37500,SOLANA:40000},mintGasFloorMilliViz:{GRAM:1000,SOLANA:1000},refundFeeMilliViz:5000,decimals:3};
 // A tariff that moved: the GRAM floor follows the VIZ/TON rate, so it can change.
 const MOVED_FEES = {floorMilliViz:{GRAM:60000,SOLANA:10000},bps:20,activationSurchargeMilliViz:{GRAM:45000,SOLANA:40000},mintGasFloorMilliViz:{GRAM:1000,SOLANA:1000},refundFeeMilliViz:5000,decimals:3};
+// Same, with the refund fee moved too — the refund line is its own number.
+const MOVED_REFUND_FEES = {...LIVE_FEES, refundFeeMilliViz:7000};
 
 async function openWith(stubSrc, template){
 	await cmd('Page.navigate',{url:'about:blank'});
@@ -88,6 +90,27 @@ try {
 		!!solLive && /\b10 VIZ\b/.test(solLive) && /\b40 VIZ\b/.test(solLive) && /\b11 VIZ\b/.test(solLive) && /\b51 VIZ\b/.test(solLive),
 		solLive);
 
+	// --- refund fee: its own line, after the minimum (owner chose B, not folded into the fee line)
+	check('refund line present with the live refund fee',
+		!!tonLive && /вернёт его за вычетом 5 VIZ/.test(tonLive), tonLive);
+	check('refund line comes after the minimum',
+		!!tonLive && tonLive.indexOf('Минимальная сумма')>=0
+			&& tonLive.indexOf('Минимальная сумма') < tonLive.indexOf('за вычетом'),
+		tonLive);
+	check('Solana hint carries the refund line too',
+		!!solLive && /вернёт его за вычетом 5 VIZ/.test(solLive), solLive);
+
+	const movedRefund = await openWith(stub(OK_RECON, MOVED_REFUND_FEES), 'ton');
+	check('moved refund fee moves the refund line (live, not baked)',
+		!!movedRefund && /за вычетом 7 VIZ/.test(movedRefund) && !/за вычетом 5 VIZ/.test(movedRefund),
+		movedRefund);
+
+	// a tariff that omits the refund fee must drop the line rather than print a wrong number
+	const noRefundFees = {...LIVE_FEES}; delete noRefundFees.refundFeeMilliViz;
+	const noRefund = await openWith(stub(OK_RECON, noRefundFees), 'ton');
+	check('missing refund fee drops the line instead of guessing',
+		!!noRefund && noRefund.indexOf('за вычетом')<0 && noRefund.indexOf('{')<0, noRefund);
+
 	// --- the load-bearing one: a moved tariff must move the text
 	// Match on the surrounding phrases, not bare numbers: 45 VIZ is a legal value in the moved
 	// tariff too (as the surcharge), so only "максимум из 45 VIZ" proves the floor is stale.
@@ -101,9 +124,11 @@ try {
 	const tonDown = await openWith(stub(OK_RECON, null), 'ton');
 	const solDown = await openWith(stub(OK_RECON, null), 'solana');
 	check('TON falls back to the dictionary when /fees is down',
-		!!tonDown && /45 VIZ/.test(tonDown) && /46 VIZ/.test(tonDown) && /83,5/.test(tonDown), tonDown);
+		!!tonDown && /45 VIZ/.test(tonDown) && /46 VIZ/.test(tonDown) && /83,5/.test(tonDown)
+			&& /за вычетом 5 VIZ/.test(tonDown), tonDown);
 	check('Solana falls back to the dictionary when /fees is down',
-		!!solDown && /10 VIZ/.test(solDown) && /51 VIZ/.test(solDown), solDown);
+		!!solDown && /10 VIZ/.test(solDown) && /51 VIZ/.test(solDown)
+			&& /за вычетом 5 VIZ/.test(solDown), solDown);
 	check('fallback and live hints agree on the base sentence',
 		!!tonLive && !!tonDown && tonLive.split(' Комиссия')[0]===tonDown.split(' Комиссия')[0],
 		'live="' + (tonLive||'').split(' Комиссия')[0] + '" fallback="' + (tonDown||'').split(' Комиссия')[0] + '"');

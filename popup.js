@@ -1019,8 +1019,19 @@ function read_transfer_gateway_fees(data){
 		'activationSurchargeMilliViz':data['activationSurchargeMilliViz'],
 		'mintGasFloorMilliViz':data['mintGasFloorMilliViz'],
 		'bps':Number(data.bps)||0,
+		'refundFeeMilliViz':'number'==typeof data.refundFeeMilliViz ? data.refundFeeMilliViz : null,
 		'decimals':'number'==typeof data.decimals ? data.decimals : 3,
 	};
+}
+
+// A below-minimum transfer is not simply rejected: it comes back minus the gateway's refund
+// fee. Worth its own line — it is the part that costs money.
+function transfer_gateway_refund_line(){
+	let fees=transfer_gateway_fees;
+	if(!fees || null===fees['refundFeeMilliViz']){
+		return '';
+	}
+	return ltmp_arr.transfer_template_refund_line.replace('{refund}',fmt_gateway_amount(fees['refundFeeMilliViz']));
 }
 
 // The tariff endpoint keys chains by gateway name (GRAM/SOLANA), the template select by
@@ -1047,7 +1058,11 @@ function transfer_template_hint(chain){
 	}
 	let base=ltmp_arr['ton'==chain ? 'transfer_template_ton_hint_base' : 'transfer_template_solana_hint_base'];
 	let line=transfer_gateway_fee_line(chain);
-	return line ? base+' '+line : ltmp_arr['ton'==chain ? 'transfer_template_ton_hint' : 'transfer_template_solana_hint'];
+	if(!line){
+		return ltmp_arr['ton'==chain ? 'transfer_template_ton_hint' : 'transfer_template_solana_hint'];
+	}
+	let refund=transfer_gateway_refund_line();
+	return base+' '+line+(refund ? ' '+refund : '');
 }
 
 function apply_transfer_gateway_status(data){
