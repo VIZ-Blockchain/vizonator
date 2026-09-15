@@ -1214,7 +1214,10 @@ function inpage_action(request){
 					}
 				});
 			};
-			if(request.force_memo_encoding){
+			/* сайт может пометить шифрование опциональным (optional_memo_encoding) — тогда
+			   решает пользователь в окне подтверждения (action.encrypt_memo), а не сайт */
+			let should_encrypt_memo=(request.force_memo_encoding||(request.optional_memo_encoding&&request.encrypt_memo));
+			if(should_encrypt_memo){
 				if('VIZ1111111111111111111111111111111114T1Anm'==recipient_memo){
 					send_error('recipient_memo_error');
 					return;
@@ -1284,7 +1287,10 @@ function inpage_action(request){
 					}
 				});
 			};
-			if(request.force_memo_encoding){
+			/* сайт может пометить шифрование опциональным (optional_memo_encoding) — тогда
+			   решает пользователь в окне подтверждения (action.encrypt_memo), а не сайт */
+			let should_encrypt_memo=(request.force_memo_encoding||(request.optional_memo_encoding&&request.encrypt_memo));
+			if(should_encrypt_memo){
 				if('VIZ1111111111111111111111111111111114T1Anm'==recipient_memo){
 					send_error('recipient_memo_error');
 					return;
@@ -1348,7 +1354,10 @@ function inpage_action(request){
 					}
 				});
 			};
-			if(request.force_memo_encoding){
+			/* сайт может пометить шифрование опциональным (optional_memo_encoding) — тогда
+			   решает пользователь в окне подтверждения (action.encrypt_memo), а не сайт */
+			let should_encrypt_memo=(request.force_memo_encoding||(request.optional_memo_encoding&&request.encrypt_memo));
+			if(should_encrypt_memo){
 				if('VIZ1111111111111111111111111111111114T1Anm'==recipient_memo){
 					send_error('recipient_memo_error');
 					return;
@@ -2961,6 +2970,7 @@ function handle_message(request,sender,sendResponse){
 									beneficiaries:JSON.parse(request.beneficiaries),
 
 									force_memo_encoding:request.force_memo_encoding,
+									optional_memo_encoding:request.optional_memo_encoding,
 								};
 							}
 							if('fixed_award'==request.operation){
@@ -2992,6 +3002,7 @@ function handle_message(request,sender,sendResponse){
 									beneficiaries:JSON.parse(request.beneficiaries),
 
 									force_memo_encoding:request.force_memo_encoding,
+									optional_memo_encoding:request.optional_memo_encoding,
 								};
 							}
 							if('transfer'==request.operation){
@@ -3021,6 +3032,7 @@ function handle_message(request,sender,sendResponse){
 									memo:request.memo,
 
 									force_memo_encoding:request.force_memo_encoding,
+									optional_memo_encoding:request.optional_memo_encoding,
 								};
 							}
 							if('transfer_to_vesting'==request.operation){

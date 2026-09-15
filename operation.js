@@ -376,6 +376,29 @@ function focus_amount_input(){
 	}
 }
 
+//Опциональное шифрование memo: статусная строка следует за галочкой вживую, иначе юзер
+//снял бы галочку и не увидел, что теперь пишет "НЕ будет зашифрована".
+function bind_encode_memo_input(){
+	let field=$('.encode_memo_input');
+	if(0==field.length){
+		return;
+	}
+	let update=function(){
+		let status=$('.encode_memo_status');
+		if(field.prop('checked')){
+			status.removeClass('warn');
+			status.html(ltmp_arr.encode_memo_yes);
+		}
+		else{
+			status.addClass('warn');
+			status.html(ltmp_arr.encode_memo_no);
+		}
+	};
+	field.off('change');
+	field.on('change',update);
+	update();
+}
+
 function bind_actions(){
 	$('.refuse-action').off('click');
 	$('.refuse-action').on('click',function(){
@@ -415,6 +438,12 @@ function bind_actions(){
 				action.amount=checked_amount;
 			}
 
+			if($('.encode_memo_input').length>0){
+				//Опциональное шифрование: решение принял пользователь в этом окне,
+				//а не сайт (сайт только разрешил выбор через optional_memo_encoding).
+				action.encrypt_memo=$('.encode_memo_input').prop('checked');
+			}
+
 			if($('.trust input[name="save"]').prop("checked")){
 				action.save=true;
 			}
@@ -439,13 +468,22 @@ function bind_actions(){
 // fixed-width confirmation window) and whether it leaves encrypted or in the clear. The
 // encoding line used to appear ONLY when force_memo_encoding was true, so a plain transfer
 // (the common case) said nothing at all — the user had no way to tell it goes in plaintext.
-function render_memo_block(memo,force_memo_encoding){
+//
+// optional_memo_encoding: the site leaves the choice to the user instead of forcing it
+// either way. Shown ONLY when encryption is actually possible (the signing account has a
+// memo key, account.memo) — offering a checkbox that can never do anything would be worse
+// than no checkbox. Defaults to checked (encrypt), matching "encrypt unless told otherwise".
+function render_memo_block(memo,force_memo_encoding,optional_memo_encoding){
 	if(''==memo){
 		return '';
 	}
 	let result='<p>'+ltmp_arr.memo_caption+':</p><span class="gray monospace limit-height">'+escape_html(memo)+'</span>';
 	if(force_memo_encoding){
 		result+='<p>'+ltmp_arr.encode_memo_yes+'</p>';
+	}
+	else if(optional_memo_encoding && account.memo){
+		result+='<p><label class="unselectable"><input type="checkbox" class="encode_memo_input" checked> &mdash; '+ltmp_arr.award_form_encode_memo+'</label></p>';
+		result+='<p class="encode_memo_status">'+ltmp_arr.encode_memo_yes+'</p>';
 	}
 	else{
 		result+='<p class="warn">'+ltmp_arr.encode_memo_no+'</p>';
@@ -550,7 +588,7 @@ function action_info(){
 		let result='';
 		if('award'==action.operation){
 			result+='<p class="caption">'+operation_str+' '+escape_html(action.receiver)+'</p>';
-			result+=render_memo_block(action.memo,action.force_memo_encoding);
+			result+=render_memo_block(action.memo,action.force_memo_encoding,action.optional_memo_encoding);
 			if(action.custom_sequence>0){
 				result+='<p class="gray">'+ltmp_arr.sequence_caption+': '+parseInt(action.custom_sequence)+'</p>';
 			}
@@ -573,7 +611,7 @@ function action_info(){
 		}
 		if('fixed_award'==action.operation){
 			result+='<p class="caption">'+operation_str+' '+escape_html(action.receiver)+'</p>';
-			result+=render_memo_block(action.memo,action.force_memo_encoding);
+			result+=render_memo_block(action.memo,action.force_memo_encoding,action.optional_memo_encoding);
 			if(action.custom_sequence>0){
 				result+='<p class="gray">'+ltmp_arr.sequence_caption+': '+parseInt(action.custom_sequence)+'</p>';
 			}
@@ -587,7 +625,7 @@ function action_info(){
 		}
 		if('transfer'==action.operation){
 			result+='<p class="caption">'+operation_str+' '+escape_html(action.to)+'</p>';
-			result+=render_memo_block(action.memo,action.force_memo_encoding);
+			result+=render_memo_block(action.memo,action.force_memo_encoding,action.optional_memo_encoding);
 			result+='<p class="orange">'+ltmp_arr.origin_caption+': '+action.origin+'</p>';
 			if(false===action.amount || ''===action.amount){
 				//Страница не назвала сумму — пользователь вводит её сам.
@@ -832,6 +870,7 @@ function action_info(){
 		}
 		bind_actions();
 		bind_amount_input();
+		bind_encode_memo_input();
 	}
 	else{
 		$('.action').html(ltmp_arr.operation_error);

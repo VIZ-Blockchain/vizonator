@@ -166,6 +166,7 @@ document.addEventListener('vizonator',function(event){
 				beneficiaries,
 
 				force_memo_encoding:('undefined' == typeof data.force_memo_encoding?false:data.force_memo_encoding),
+				optional_memo_encoding:('undefined' == typeof data.optional_memo_encoding?false:data.optional_memo_encoding),
 
 				action_top,action_left,action_width,action_height
 			});
@@ -196,6 +197,7 @@ document.addEventListener('vizonator',function(event){
 				beneficiaries,
 
 				force_memo_encoding:('undefined' == typeof data.force_memo_encoding?false:data.force_memo_encoding),
+				optional_memo_encoding:('undefined' == typeof data.optional_memo_encoding?false:data.optional_memo_encoding),
 
 				action_top,action_left,action_width,action_height
 			});
@@ -263,6 +265,7 @@ document.addEventListener('vizonator',function(event){
 				memo:('undefined' == typeof data.memo?'':data.memo),
 
 				force_memo_encoding:('undefined' == typeof data.force_memo_encoding?false:data.force_memo_encoding),
+				optional_memo_encoding:('undefined' == typeof data.optional_memo_encoding?false:data.optional_memo_encoding),
 
 				action_top,action_left,action_width,action_height
 			});
