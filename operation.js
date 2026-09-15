@@ -433,6 +433,26 @@ function bind_actions(){
 	});
 }
 
+// Shared by award/fixed_award/transfer. Two things the user must always be able to see
+// without scrolling the window wider: the memo text itself (capped height, not inline —
+// a long dApp-generated memo, like a hash from hub.viz.world, otherwise stretches the
+// fixed-width confirmation window) and whether it leaves encrypted or in the clear. The
+// encoding line used to appear ONLY when force_memo_encoding was true, so a plain transfer
+// (the common case) said nothing at all — the user had no way to tell it goes in plaintext.
+function render_memo_block(memo,force_memo_encoding){
+	if(''==memo){
+		return '';
+	}
+	let result='<p>'+ltmp_arr.memo_caption+':</p><span class="gray monospace limit-height">'+escape_html(memo)+'</span>';
+	if(force_memo_encoding){
+		result+='<p>'+ltmp_arr.encode_memo_yes+'</p>';
+	}
+	else{
+		result+='<p class="warn">'+ltmp_arr.encode_memo_no+'</p>';
+	}
+	return result;
+}
+
 function action_info(){
 	let hash=window.location.hash.substring(1);
 	if(''!=hash){
@@ -530,14 +550,7 @@ function action_info(){
 		let result='';
 		if('award'==action.operation){
 			result+='<p class="caption">'+operation_str+' '+escape_html(action.receiver)+'</p>';
-			if(''!=action.memo){
-				result+='<p>'+ltmp_arr.memo_caption+':</p><span class="gray monospace limit-height">'+escape_html(action.memo)+'</span>';
-				if(action.force_memo_encoding){
-					if(account.memo){
-						result+='<p>'+ltmp_arr.encode_memo_caption+': ✔️</p>';
-					}
-				}
-			}
+			result+=render_memo_block(action.memo,action.force_memo_encoding);
 			if(action.custom_sequence>0){
 				result+='<p class="gray">'+ltmp_arr.sequence_caption+': '+parseInt(action.custom_sequence)+'</p>';
 			}
@@ -560,14 +573,7 @@ function action_info(){
 		}
 		if('fixed_award'==action.operation){
 			result+='<p class="caption">'+operation_str+' '+escape_html(action.receiver)+'</p>';
-			if(''!=action.memo){
-				result+='<p>'+ltmp_arr.memo_caption+':</p><span class="gray monospace limit-height">'+escape_html(action.memo)+'</span>';
-				if(action.force_memo_encoding){
-					if(account.memo){
-						result+='<p>'+ltmp_arr.encode_memo_caption+': ✔️</p>';
-					}
-				}
-			}
+			result+=render_memo_block(action.memo,action.force_memo_encoding);
 			if(action.custom_sequence>0){
 				result+='<p class="gray">'+ltmp_arr.sequence_caption+': '+parseInt(action.custom_sequence)+'</p>';
 			}
@@ -581,14 +587,7 @@ function action_info(){
 		}
 		if('transfer'==action.operation){
 			result+='<p class="caption">'+operation_str+' '+escape_html(action.to)+'</p>';
-			if(''!=action.memo){
-				result+='<p>'+ltmp_arr.memo_caption+': '+escape_html(action.memo)+'</p>';
-				if(action.force_memo_encoding){
-					if(account.memo){
-						result+='<p>'+ltmp_arr.encode_memo_caption+': ✔️</p>';
-					}
-				}
-			}
+			result+=render_memo_block(action.memo,action.force_memo_encoding);
 			result+='<p class="orange">'+ltmp_arr.origin_caption+': '+action.origin+'</p>';
 			if(false===action.amount || ''===action.amount){
 				//Страница не назвала сумму — пользователь вводит её сам.
