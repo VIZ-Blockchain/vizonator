@@ -2418,6 +2418,44 @@ function handle_message(request,sender,sendResponse){
 			});
 		}
 		else
+		if(typeof request.agent_check !== 'undefined'){
+			/* #920: log in with an agent key. The key must match the principal's on-chain agent
+			   record by name; operations and expiration are taken from the chain, not the form. */
+			let q=request.agent_check;
+			let pub='';
+			try{ pub=viz.auth.wifToPublic(q.wif); }catch(e){}
+			let reply=function(pub){
+				viz.api.send('database_api',{method:'get_agent_permissions',params:[q.principal]},function(err,res){
+					if(err||!Array.isArray(res)){
+						sendResponse({error:'agent_unsupported'});
+						return;
+					}
+					let rec=res.filter(function(a){return a.agent_name==q.name;})[0];
+					if(!rec){
+						sendResponse({error:'agent_not_found'});
+					}
+					else if(rec.agent_key!=pub){
+						sendResponse({error:'agent_key_mismatch'});
+					}
+					else if(rec.expired){
+						sendResponse({error:'agent_expired'});
+					}
+					else{
+						sendResponse({agent:{name:rec.agent_name,operations:rec.operations,expiration:rec.expiration}});
+					}
+				});
+			};
+			if(pub && 'function'==typeof pub.then){
+				pub.then(reply,function(){ sendResponse({error:'agent_bad_key'}); });
+			}
+			else if(pub){
+				reply(pub);
+			}
+			else{
+				sendResponse({error:'agent_bad_key'});
+			}
+		}
+		else
 		if(typeof request.reload_state !== 'undefined'){
 			load_state(state.password,function(encode_status){
 				sendResponse({status:encode_status});

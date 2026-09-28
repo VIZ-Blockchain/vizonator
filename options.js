@@ -206,9 +206,14 @@ var account_form_html=function(mode,login){
 	else{
 		result+='<p><input type="text" autocomplete="off" class="login" value=""> &mdash; '+ltmp_arr.form_login+' <span class="red">*</span></p>';
 	}
-	result+='<p><input type="password" autocomplete="off" class="regular_key" value=""> &mdash; '+ltmp_arr.form_regular_key+(edit?'':' <span class="red">*</span>')+key_exist_mark(has_regular)+'</p>';
-	result+='<p><input type="password" autocomplete="off" class="memo_key" value=""> &mdash; '+ltmp_arr.form_memo_key+' (<span class="dotted" title="'+ltmp_arr.form_memo_key_descr+'">'+ltmp_arr.form_optional+'</span>)'+key_exist_mark(has_memo)+'</p>';
-	result+='<p><input type="password" autocomplete="off" class="active_key" value=""> &mdash; '+ltmp_arr.form_active_key+' (<span class="dotted" title="'+ltmp_arr.form_active_key_descr+'">'+ltmp_arr.form_optional+'</span>)'+key_exist_mark(has_active)+'</p>';
+	if(!edit){
+		result+='<p><label><input type="checkbox" class="agent_mode"> 🤖 '+ltmp_arr.form_agent_mode+'</label></p>';
+		result+='<p class="agent-only" style="display:none"><input type="text" autocomplete="off" class="agent_name" value=""> &mdash; '+ltmp_arr.form_agent_name+' <span class="red">*</span></p>';
+		result+='<p class="agent-only" style="display:none"><input type="password" autocomplete="off" class="agent_key" value=""> &mdash; '+ltmp_arr.form_agent_key+' <span class="red">*</span></p>';
+	}
+	result+='<p class="owner-only"><input type="password" autocomplete="off" class="regular_key" value=""> &mdash; '+ltmp_arr.form_regular_key+(edit?'':' <span class="red">*</span>')+key_exist_mark(has_regular)+'</p>';
+	result+='<p class="owner-only"><input type="password" autocomplete="off" class="memo_key" value=""> &mdash; '+ltmp_arr.form_memo_key+' (<span class="dotted" title="'+ltmp_arr.form_memo_key_descr+'">'+ltmp_arr.form_optional+'</span>)'+key_exist_mark(has_memo)+'</p>';
+	result+='<p class="owner-only"><input type="password" autocomplete="off" class="active_key" value=""> &mdash; '+ltmp_arr.form_active_key+' (<span class="dotted" title="'+ltmp_arr.form_active_key_descr+'">'+ltmp_arr.form_optional+'</span>)'+key_exist_mark(has_active)+'</p>';
 	if(edit){
 		result+='<p class="gray">'+ltmp_arr.form_key_keep+'</p>';
 	}
@@ -235,6 +240,10 @@ var save_account_action=function(){
 	}
 	new_user=new_user.toLowerCase();
 
+	if(form.find('.agent_mode').prop('checked')){
+		save_agent_account(form,new_user);
+		return;
+	}
 	let regular_key=form.find('.regular_key').val().trim();
 	let memo_key=form.find('.memo_key').val().trim();
 	let active_key=form.find('.active_key').val().trim();
@@ -295,6 +304,54 @@ var save_account_action=function(){
 		form.find('.save-account').removeAttr('disabled');
 	}
 }
+
+/* #920: agent session. The agent WIF goes into both regular_key and active_key so every
+   existing signing path uses it; background's agent_guard limits it to the on-chain list. */
+var save_agent_account=function(form,principal){
+	let name=form.find('.agent_name').val().trim();
+	let wif=form.find('.agent_key').val().trim();
+	let fail=function(text){
+		form.find('.error').html(text);
+		form.find('.save-account').removeAttr('disabled');
+	};
+	if(''==name||!viz.auth.isWif(wif)){
+		fail(ltmp_arr.form_agent_invalid);
+		return;
+	}
+	ext_browser.runtime.sendMessage({agent_check:{principal:principal,name:name,wif:wif}},function(response){
+		if(!response||response.error){
+			fail(ltmp_arr[(response&&response.error)||'agent_unsupported']||ltmp_arr.agent_unsupported);
+			return;
+		}
+		users[principal]={
+			'regular_key':wif,
+			'memo_key':'',
+			'active_key':wif,
+			'memo':false,
+			'active':true,
+			'agent':response.agent,
+		};
+		current_user=principal;
+		account=users[current_user];
+		save_state(function(){
+			ext_browser.runtime.sendMessage({reload_state:true});
+			get_state(function(status){
+				if(status){
+					main_app();
+				}
+				else{
+					need_encode();
+				}
+			});
+		});
+	});
+}
+
+$(document).on('change','.account-form .agent_mode',function(){
+	let on=$(this).prop('checked');
+	$('.account-form .agent-only').css('display',on?'':'none');
+	$('.account-form .owner-only').css('display',on?'none':'');
+});
 
 //accounts of the session: list with switch/edit/delete + add form
 function accounts_view(edit_login){
