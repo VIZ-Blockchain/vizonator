@@ -38,6 +38,7 @@ const wif = viz.auth.getPrivateKeys('alice', 'password', ['active']).active;
 function sample(name, type) {
 	/* commitment is a sha256 digest on the wire — an arbitrary string is not valid hex */
 	if ('commitment' === name) return 'a'.repeat(64);
+	if ('agent_key' === name) return 'VIZ6MyX5QiXAXRZk7SYCiqpi6Mtm8UbHWDFSV8HPpt7FJyahCnc2T';
 	if ('asset' === type) return '1.000 VIZ';
 	if ('array' === type) return ['yes', 'no'];
 	if ('bool' === type) return true;
