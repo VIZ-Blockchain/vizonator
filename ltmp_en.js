@@ -34,6 +34,8 @@ var ltmp_en_arr={
 	agent_key_mismatch:'The key does not match this agent',
 	agent_expired:'This agent has expired',
 	agent_bad_key:'Invalid private key',
+	agent_perpetual:'no expiry',
+	agent_days_left:'{days} more days',
 	form_login:'Account login',
 	form_login_edit_descr:'Selected account (read only)',
 	form_regular_key:'Private regular key',

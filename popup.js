@@ -2070,13 +2070,28 @@ var update_account_info=function(){
 	});
 }
 
+/* #920: agent session marker — 🤖, operations and time left (from the on-chain record) */
+var agent_badge=function(){
+	let agent=users[current_user]&&users[current_user].agent;
+	if(!agent){
+		return '';
+	}
+	let left=ltmp_arr.agent_perpetual;
+	if(agent.expiration&&'1970-01-01T00:00:00'!=agent.expiration){
+		let ms=Date.parse(agent.expiration+'Z')-Date.now();
+		left=ms<=0?ltmp_arr.agent_expired:ltmp(ltmp_arr.agent_days_left,{days:Math.ceil(ms/86400000)});
+	}
+	let title=agent.name+': '+agent.operations.join(', ')+' — '+left;
+	return ' <span class="agent-badge" title="'+escape_html(title)+'">🤖 '+escape_html(left)+'</span>';
+}
+
 var assigned_account=function(){
 	$('.header-account').remove();
 	let header=`
 	<div class="header-account unselectable">
 		${ltmp_icons.icon_users}
 		<a class="accounts-list-action">
-			${current_user}
+			${current_user}${agent_badge()}
 		</a>
 	</div>`;
 	$('.window-wrapper').append(header);

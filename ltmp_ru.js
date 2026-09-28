@@ -34,6 +34,8 @@ var ltmp_ru_arr={
 	agent_key_mismatch:'Ключ не совпадает с этим агентом',
 	agent_expired:'Срок действия агента истёк',
 	agent_bad_key:'Некорректный приватный ключ',
+	agent_perpetual:'бессрочно',
+	agent_days_left:'ещё {days} дн.',
 	form_login:'Логин аккаунта',
 	form_login_edit_descr:'Выбранный аккаунт (только чтение)',
 	form_regular_key:'Приватный обычный ключ (regular)',
