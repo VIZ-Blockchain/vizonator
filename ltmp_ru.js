@@ -238,6 +238,7 @@ var ltmp_ru_arr={
 		pm_oracle_update:'Обновление оракула',
 		pm_create_market:'Создание рынка',
 		pm_oracle_accept_market:'Принять рынок как оракул',
+		set_agent_permission:'Агент-доступ',
 		pm_place_bet:'Ставка',
 		pm_commit_bet:'Скрытая ставка (коммит)',
 		pm_reveal_bet:'Раскрытие скрытой ставки',

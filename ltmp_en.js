@@ -238,6 +238,7 @@ var ltmp_en_arr={
 		pm_oracle_update:'Update oracle',
 		pm_create_market:'Create market',
 		pm_oracle_accept_market:'Accept market as oracle',
+		set_agent_permission:'Agent access',
 		pm_place_bet:'Place bet',
 		pm_commit_bet:'Commit hidden bet',
 		pm_reveal_bet:'Reveal hidden bet',

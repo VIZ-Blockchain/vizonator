@@ -171,6 +171,17 @@
 		pm_leverage_convert:{authority:'active',actor:'account',fields:[
 			['position_id','int',true],
 			['conversion_profit_cost','uint',false]
+		]},
+		/* HF15 agent access (op 105), not a PM operation but broadcast the same way. Grants a key
+		   the listed operations of the CURRENT user, so background.js never auto-approves it by a
+		   trustline: the user always sees key, operations, expiration and addons in the window
+		   (owner decision q1721=B). Both lists empty = revoke. */
+		set_agent_permission:{authority:'active',actor:'account',never_trust:true,fields:[
+			['agent_name','string',true],
+			['agent_key','string',true],
+			['operations','array',false],
+			['expiration','time',true],
+			['addons','array',false]
 		]}
 	};
 

@@ -851,8 +851,10 @@ function action_info(){
 		}
 
 		/* Смену аккаунта не запоминаем: правило сайта не должно позволять ему молча
-		   переключать кошелёк на другой аккаунт, поэтому галочку здесь не показываем. */
-		if('switch_account'!=action.operation){
+		   переключать кошелёк на другой аккаунт, поэтому галочку здесь не показываем.
+		   То же для выдачи агента (never_trust): одобрение не запоминается. */
+		let never_trust=typeof VIZ_PM_OPS !== 'undefined' && VIZ_PM_OPS.ops[action.operation] && VIZ_PM_OPS.ops[action.operation].never_trust;
+		if('switch_account'!=action.operation&&!never_trust){
 			result+='<div class="text-right trust"><label class="unselectable"><input type="checkbox" name="save"> &mdash; '+ltmp_arr.save_rule_caption+'</label></div>';
 		}
 		result+='<div class="text-right">';

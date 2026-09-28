@@ -3300,6 +3300,11 @@ function handle_message(request,sender,sendResponse){
 
 									pm_params:request.pm_params,
 								};
+								/* agent grant: always through the window, a saved approval does not
+								   cover it (a saved refusal still does) */
+								if(VIZ_PM_OPS.ops[request.operation].never_trust&&'refuse'!=trustline){
+									trustline=false;
+								}
 							}
 							if(false===trustline){//no trustline for origin, ask user
 								if(!find_error){
