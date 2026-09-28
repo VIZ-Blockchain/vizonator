@@ -1699,6 +1699,14 @@ function inpage_action(request){
 				});
 			}
 		}
+		if(account.agent){
+			/* #920: an agent key signs operations only. Refuse passwordless auth and data
+			   signing up front: passwordless_auth retries forever on a missing signature. */
+			error=true;
+			if(request.tab_id){
+				ext_browser.tabs.sendMessage(request.tab_id,{event:request.event,data:{'error':'agent_no_data_sign','result':null}});
+			}
+		}
 		let private_key=account.regular_key;
 		if('active'==request.authority){
 			if(''!=account.active_key){
@@ -1743,6 +1751,13 @@ function inpage_action(request){
 	else
 	if('sign_data'==request.operation){
 		let error=false;
+		if(account.agent){
+			//#920: agent key signs operations only
+			error=true;
+			if(request.tab_id){
+				ext_browser.tabs.sendMessage(request.tab_id,{event:request.event,data:{'error':'agent_no_data_sign','result':null}});
+			}
+		}
 		let private_key=account.regular_key;
 		if('active'==request.authority){
 			if(''!=account.active_key){
