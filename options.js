@@ -487,6 +487,105 @@ var need_encode=function(){
 	$('.rules-list').html('');
 }
 
+function escape_html(text) {
+	var map = {
+		'&': '&amp;',
+		'<': '&lt;',
+		'>': '&gt;',
+		'"': '&quot;',
+		"'": '&#039;'
+	};
+	return (''+text).replace(/[&<>"']/g,function(m){return map[m];});
+}
+
+/* HF15 agent access for the current account. Requests go through background.js (it holds the keys
+   and the node gate); the section stays empty while the node does not answer get_agent_permissions
+   (owner decision q1720=A). Operation list = the node's variant minus virtual, never-delegable and
+   retired operations — the same list the web wallet shows. */
+var agents_ops=['transfer','transfer_to_vesting','withdraw_vesting','delegate_vesting_shares','set_withdraw_vesting_route','award','fixed_award','custom','account_metadata','account_create','create_invite','claim_invite_balance','use_invite_balance','invite_registration','escrow_transfer','escrow_approve','escrow_dispute','escrow_release','request_account_recovery','validator_update','chain_properties_update','versioned_chain_properties_update','account_validator_vote','account_validator_proxy','set_reward_sharing','committee_worker_create_request','committee_worker_cancel_request','committee_vote_request','set_paid_subscription','paid_subscribe','buy_account','pm_place_bet','pm_commit_bet','pm_reveal_bet','pm_cancel_bet','pm_transfer_position','pm_add_liquidity','pm_withdraw_liquidity','pm_lazy_deposit','pm_lazy_withdraw','pm_leverage_open','pm_leverage_close','pm_leverage_convert','pm_create_market','pm_oracle_register','pm_oracle_update','pm_oracle_accept_market','pm_resolve_market','pm_no_contest','pm_dispute_create','pm_dispute_vote','pm_dispute_resolve','pm_dispute_oracle_respond','pm_unban'];
+function agents_view(){
+	ext_browser.runtime.sendMessage({agent_list:true},function(response){
+		if(!response||response.error||!Array.isArray(response.result)){
+			$('.agents').html('');
+			return;
+		}
+		let list=response.result;
+		let result='<hr><h2>'+ltmp_arr.agents_caption+'</h2>';
+		result+='<p class="gray">'+ltmp_arr.agents_descr+'</p>';
+		if(0==list.length){
+			result+='<p class="gray">'+ltmp_arr.agents_empty+'</p>';
+		}
+		for(let i=0;i<list.length;i++){
+			let a=list[i];
+			result+='<div class="account-row"><b>'+escape_html(a.agent_name)+'</b>'+(a.expired?' <span class="red">('+ltmp_arr.agents_expired+')</span>':'');
+			result+=' <a href="#" class="agents-revoke" data-name="'+escape_html(a.agent_name)+'">'+ltmp_arr.agents_revoke+'</a>';
+			result+='<br><span class="gray">'+escape_html(a.agent_key)+'</span>';
+			result+='<br>'+escape_html(a.operations.join(', '));
+			if(a.addons&&a.addons.length){ result+='<br>addons: '+escape_html(a.addons.join(', ')); }
+			result+='<br><span class="gray">'+('1970-01-01T00:00:00'==a.expiration?ltmp_arr.agents_perpetual:escape_html(a.expiration.replace('T',' '))+' UTC')+'</span></div>';
+		}
+		result+='<p><input type="text" autocomplete="off" class="agents-name"> &mdash; '+ltmp_arr.agents_name+'</p>';
+		result+='<p><input type="text" autocomplete="off" class="agents-key" placeholder="VIZ..."> &mdash; '+ltmp_arr.agents_key+' <a href="#" class="agents-gen">'+ltmp_arr.agents_gen+'</a></p>';
+		result+='<p class="agents-new-key"></p>';
+		result+='<p>'+ltmp_arr.agents_ops+':</p><p>';
+		for(let i=0;i<agents_ops.length;i++){
+			result+='<label style="display:inline-block;margin-right:12px"><input type="checkbox" class="agents-op" value="'+agents_ops[i]+'"> '+agents_ops[i]+'</label>';
+		}
+		result+='</p>';
+		result+='<p><input type="date" class="agents-exp"> &mdash; '+ltmp_arr.agents_exp+'</p>';
+		result+='<p><input type="text" autocomplete="off" class="agents-addons" placeholder="vizhub"> &mdash; '+ltmp_arr.agents_addons+'</p>';
+		result+='<p><input type="button" class="agents-save" value="'+ltmp_arr.agents_save+'"></p>';
+		result+='<div class="agents-status"></div>';
+		$('.agents').html(result);
+		$('.agents-gen').on('click',function(e){
+			e.preventDefault();
+			let seed=new Uint8Array(32); crypto.getRandomValues(seed);
+			let wif=viz.auth.toWif(current_user,Array.from(seed).map(function(b){return ('0'+b.toString(16)).slice(-2);}).join(''),'agent');
+			$('.agents-key').val(viz.auth.wifToPublic(wif));
+			$('.agents-new-key').html(ltmp_arr.agents_new_key+'<br><b class="monospace">'+escape_html(wif)+'</b>');
+		});
+		$('.agents-revoke').on('click',function(e){
+			e.preventDefault();
+			let name=$(this).attr('data-name');
+			if(!confirm(ltmp(ltmp_arr.agents_revoke_confirm,{name:name}))){ return; }
+			agents_send({agent_name:name,agent_key:'VIZ1111111111111111111111111111111114T1Anm',operations:[],expiration:'1970-01-01T00:00:00',addons:[]},ltmp_arr.agents_revoked);
+		});
+		$('.agents-save').on('click',function(){
+			let err=function(t){ $('.agents-status').html('<p class="red">'+t+'</p>'); };
+			let name=(''+$('.agents-name').val()).trim();
+			if(!/^[a-z0-9_-]+$/.test(name)){ return err(ltmp_arr.agents_bad_name); }
+			let key=(''+$('.agents-key').val()).trim();
+			if(!viz.auth.isPubkey(key)){ return err(ltmp_arr.agents_bad_key); }
+			let ops=[]; $('.agents-op').each(function(){ if($(this).prop('checked')){ ops.push($(this).val()); } });
+			let addons=[], bad=false;
+			(''+$('.agents-addons').val()).split(',').forEach(function(a){ a=a.trim(); if(''==a){ return; } if(a.length>63){ bad=true; } if(-1==addons.indexOf(a)){ addons.push(a); } });
+			if(bad||addons.length>10){ return err(ltmp_arr.agents_bad_addons); }
+			if(0==ops.length&&0==addons.length){ return err(ltmp_arr.agents_no_scope); }
+			let expiration='1970-01-01T00:00:00';
+			let d=''+$('.agents-exp').val();
+			if(''!=d){
+				if(!/^\d{4}-\d{2}-\d{2}$/.test(d)||Date.parse(d+'T00:00:00Z')<=Date.now()){ return err(ltmp_arr.agents_bad_date); }
+				expiration=d+'T00:00:00';
+			}
+			ops.sort(); addons.sort();
+			agents_send({agent_name:name,agent_key:key,operations:ops,expiration:expiration,addons:addons},ltmp_arr.agents_saved);
+		});
+	});
+}
+function agents_send(params,ok_text){
+	$('.agents-save').attr('disabled','disabled');
+	ext_browser.runtime.sendMessage({agent_set:params},function(response){
+		$('.agents-save').removeAttr('disabled');
+		if(response&&response.result){
+			agents_view();
+			setTimeout(function(){ $('.agents-status').html('<p>✔️ '+ok_text+'</p>'); },500);
+		}
+		else{
+			$('.agents-status').html('<p class="red">'+escape_html(response?(''+response.error):'error')+'</p>');
+		}
+	});
+}
+
 function main_app(){
 	$('.caption').html('<img src="images/icon32.png" alt="logo"> '+ltmp_arr.settings_caption);
 	let result='';
@@ -580,10 +679,12 @@ function main_app(){
 
 	if(''!=current_user){
 		lock_view();
+		agents_view();
 		rules_list();
 	}
 	else{
 		$('.lock').html('');
+		$('.agents').html('');
 		$('.rules-list').html('');
 	}
 }

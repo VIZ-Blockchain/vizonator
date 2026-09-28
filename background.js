@@ -2291,6 +2291,35 @@ function handle_message(request,sender,sendResponse){
 			sendResponse({status:'cleared'});
 		}
 		else
+		/* HF15 agent access from the settings page only: extension pages have no sender.tab, content
+		   scripts (a site) always do. A site asks for set_agent_permission through the confirmation
+		   window instead (pm_ops.js, never_trust). */
+		if(typeof request.agent_list !== 'undefined' && extension_id==sender.id && !sender.tab && !need_encode){
+			viz.api.send('database_api',{method:'get_agent_permissions',params:[current_user]},function(err,res){
+				sendResponse({error:err?(''+(err.message||err)):false,result:err?false:res});
+			});
+		}
+		else
+		if(typeof request.agent_set !== 'undefined' && extension_id==sender.id && !sender.tab && !need_encode){
+			let key=(''!=current_user && users[current_user])?users[current_user].active_key:'';
+			if(typeof key === 'undefined' || ''==key){
+				sendResponse({error:'empty_active_key',result:false});
+			}
+			else{
+				let built=VIZ_PM_OPS.build_payload('set_agent_permission',current_user,request.agent_set);
+				if(built.error){ sendResponse({error:built.error,result:false}); }
+				else{
+					try{
+						viz.broadcast.send({extensions:[],operations:[['set_agent_permission',built.payload]]},[key],function(err,res){
+							sendResponse({error:err?(''+(err.message||err)):false,result:err?false:true});
+						});
+					}catch(e){
+						sendResponse({error:''+(e.message||e),result:false});
+					}
+				}
+			}
+		}
+		else
 		if(typeof request.get_account_info !== 'undefined'){
 			sendResponse({
 				current_energy: current_energy,
