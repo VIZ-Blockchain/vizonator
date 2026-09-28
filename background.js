@@ -197,6 +197,10 @@ if (use_offscreen) {
 			apply: function(target, thisArg, args) {
 				var methodPath = path.indexOf('viz.') === 0 ? path.substring(4) : path;
 				var lastArg = args[args.length - 1];
+				var agent_refusal = agent_guard(methodPath, args);
+				if (agent_refusal) {
+					return agent_deny(methodPath, args, agent_refusal);
+				}
 				var hasCallback = typeof lastArg === 'function';
 				var isSync = (methodPath === 'config.set' || methodPath.indexOf('auth.') === 0 || methodPath.indexOf('memo.') === 0);
 				
@@ -231,6 +235,58 @@ if (use_offscreen) {
 		});
 	}
 	var viz = createVizProxy('viz');
+}
+
+/* Agent session (#920): users[login].agent = {name, operations, expiration} and both
+   regular_key/active_key hold the agent WIF, so every existing broadcast path signs with it.
+   This guard is the single choke point: an operation outside the agent's list, or any call
+   after expiration, is refused here before signing (the node would reject it anyway, this
+   gives a readable error and no confirm window). Plain data signing is refused: an agent
+   key signs operations only. */
+function agent_snake(name){
+	return name.replace(/With$/,'').replace(/[A-Z]/g,function(c){return '_'+c.toLowerCase();});
+}
+function agent_guard(methodPath,args){
+	if(typeof account === 'undefined' || !account || !account.agent){
+		return null;
+	}
+	let agent=account.agent;
+	if(agent.expiration && '1970-01-01T00:00:00'!=agent.expiration && Date.parse(agent.expiration+'Z')<=Date.now()){
+		return 'agent_expired';
+	}
+	let ops=null;
+	if('auth.signature.sign'==methodPath){
+		return 'agent_no_data_sign';
+	}
+	if('broadcast.send'==methodPath || 'auth.signTransaction'==methodPath || 'broadcast._prepareTransaction'==methodPath){
+		ops=((args[0]&&args[0].operations)||[]).map(function(op){return op[0];});
+	}
+	else if(0===methodPath.indexOf('broadcast.')){
+		ops=[agent_snake(methodPath.substring(10))];
+	}
+	if(null===ops){
+		return null;
+	}
+	for(let i=0;i<ops.length;i++){
+		if(-1==agent.operations.indexOf(ops[i])){
+			return 'agent_op_not_allowed:'+ops[i];
+		}
+	}
+	return null;
+}
+function agent_deny(methodPath,args,reason){
+	console.warn('agent guard: '+methodPath+' refused ('+reason+')');
+	let cb=args[args.length-1];
+	if('function'==typeof cb){
+		if(0===methodPath.indexOf('auth.')){
+			cb(null);
+		}
+		else{
+			cb({message:reason,agent_guard:true},null);
+		}
+		return undefined;
+	}
+	return Promise.reject(new Error(reason));
 }
 
 /* Firefox compatibility: wrap sync viz methods to also accept callbacks.
@@ -281,11 +337,37 @@ if (!use_offscreen && typeof viz !== 'undefined') {
 		}
 	};
 	viz.auth.signTransaction = function(tx, keys, callback) {
+		var agent_refusal = agent_guard('auth.signTransaction', [tx, keys, callback]);
+		if (agent_refusal) {
+			return agent_deny('auth.signTransaction', [tx, keys, callback], agent_refusal);
+		}
 		if (callback) {
 			callback(_orig_signTx.call(viz.auth, tx, keys));
 		} else {
 			return _orig_signTx.call(viz.auth, tx, keys);
 		}
+	};
+	Object.keys(viz.broadcast).forEach(function(name) {
+		var orig = viz.broadcast[name];
+		if ('function' != typeof orig) {
+			return;
+		}
+		viz.broadcast[name] = function() {
+			var args = Array.prototype.slice.call(arguments);
+			var agent_refusal = agent_guard('broadcast.' + name, args);
+			if (agent_refusal) {
+				return agent_deny('broadcast.' + name, args, agent_refusal);
+			}
+			return orig.apply(viz.broadcast, args);
+		};
+	});
+	var _orig_sig_sign = viz.auth.signature.sign;
+	viz.auth.signature.sign = function(data, key, callback) {
+		var agent_refusal = agent_guard('auth.signature.sign', [data, key, callback]);
+		if (agent_refusal) {
+			return agent_deny('auth.signature.sign', [data, key, callback], agent_refusal);
+		}
+		return _orig_sig_sign.call(viz.auth.signature, data, key, callback);
 	};
 }
 
