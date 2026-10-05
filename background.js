@@ -2359,6 +2359,13 @@ lsLoadAll(function(){
 });
 
 
+/* HF15: extension page opened in a TAB carries sender.tab (openOptionsPage opens exactly such a
+   tab), so `!sender.tab` rejected the options page itself and the agent section never rendered.
+   Discriminator must be the SENDER ORIGIN, not the presence of a tab. */
+function sender_is_ext_page(sender){
+	return !!sender && typeof sender.url === 'string' && sender.url.indexOf('chrome-extension://'+extension_id+'/')===0;
+}
+
 function handle_message(request,sender,sendResponse){
 	console.log('onMessage',request);
 	let need_encode=false;
@@ -2388,16 +2395,18 @@ function handle_message(request,sender,sendResponse){
 			sendResponse({status:'cleared'});
 		}
 		else
-		/* HF15 agent access from the settings page only: extension pages have no sender.tab, content
-		   scripts (a site) always do. A site asks for set_agent_permission through the confirmation
-		   window instead (pm_ops.js, never_trust). */
-		if(typeof request.agent_list !== 'undefined' && extension_id==sender.id && !sender.tab && !need_encode){
+		/* HF15 agent access from the settings page only: the sender must be one of OUR extension pages
+		   (options/popup), never a site. Checked by sender.url origin — sender.tab is NOT a
+		   discriminator: an extension page opened in a tab has it too (that was the bug, see
+		   sender_is_ext_page). A site asks for set_agent_permission through the confirmation window
+		   instead (pm_ops.js, never_trust). */
+		if(typeof request.agent_list !== 'undefined' && extension_id==sender.id && sender_is_ext_page(sender) && !need_encode){
 			viz.api.send('database_api',{method:'get_agent_permissions',params:[current_user]},function(err,res){
 				sendResponse({error:err?(''+(err.message||err)):false,result:err?false:res});
 			});
 		}
 		else
-		if(typeof request.agent_set !== 'undefined' && extension_id==sender.id && !sender.tab && !need_encode){
+		if(typeof request.agent_set !== 'undefined' && extension_id==sender.id && sender_is_ext_page(sender) && !need_encode){
 			let key=(''!=current_user && users[current_user])?users[current_user].active_key:'';
 			if(typeof key === 'undefined' || ''==key){
 				sendResponse({error:'empty_active_key',result:false});
